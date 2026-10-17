@@ -1,3 +1,5 @@
+import Application from './Application'
+
 const steps = [
   {
     number: '01',
@@ -41,7 +43,7 @@ function GitHubMark() {
   )
 }
 
-function App() {
+function LandingPage() {
   return (
     <main>
       <section className="hero" id="top">
@@ -52,8 +54,8 @@ function App() {
           <div className="nav-links">
             <a href="#method">Method</a>
             <a href="#example">Example</a>
-            <a className="nav-cta" href="#access">
-              Early access <ArrowIcon />
+            <a className="nav-cta" href="/app">
+              Open app <ArrowIcon />
             </a>
           </div>
         </nav>
@@ -206,8 +208,8 @@ function App() {
         <p className="section-kicker light">Hackathon preview</p>
         <h2 id="access-title">Put research<br />on the issue list.</h2>
         <p>Built for teams that would rather ship the insight than bookmark the paper.</p>
-        <a className="light-action" href="mailto:hello@relevance.dev?subject=Relevance%20early%20access">
-          Request early access <ArrowIcon />
+        <a className="light-action" href="/app">
+          Open Relevance <ArrowIcon />
         </a>
       </section>
 
@@ -223,6 +225,10 @@ function App() {
       </footer>
     </main>
   )
+}
+
+function App() {
+  return window.location.pathname.startsWith('/app') ? <Application /> : <LandingPage />
 }
 
 export default App

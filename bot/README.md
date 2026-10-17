@@ -2,7 +2,7 @@
 
 This directory contains the typed HTTP contract for the Relevance hackathon demo. It is a FastAPI application with generated OpenAPI documentation.
 
-> **Live boundary:** completed scans fetch real paper metadata from the public arXiv API. Repository inspection, relevance scoring, persistence, authentication, and GitHub issue creation are not implemented. API responses retain `simulated: true` because the repository-aware recommendation and issue workflows are simulated; `simulation_notice` states this boundary. Generated issue links use the reserved `example.invalid` domain and are not actionable.
+Completed scans fetch real paper metadata from the public arXiv API, inspect the selected repository, and evaluate grounded paper-to-code matches through Nebius. Findings are persisted in SQLite and can be published as GitHub issues.
 
 ## Requirements and setup
 
@@ -16,7 +16,9 @@ python -m venv .venv
 python -m pip install -r requirements-dev.txt
 ```
 
-No secrets are required. The machine running the API needs outbound HTTPS access to `export.arxiv.org`.
+- `NEBIUS_API_KEY` and `NEBIUS_MODEL` are required for repository-aware evaluation.
+- `GITHUB_TOKEN` is required for private repository ingestion and GitHub issue publication; public repositories can be scanned without it.
+- The machine running the API needs outbound HTTPS access to `export.arxiv.org` and the configured Nebius endpoint.
 
 ## Run
 

@@ -21,16 +21,18 @@ cd web
 npm install
 ```
 
-The default scripts use `python3`. Activate `bot/.venv` before running them, or run the bot separately with the virtual environment command shown below.
+The default development script uses the Python interpreter in `bot/.venv`, so create that environment and install its dependencies before starting the web workspace.
 
 ## Run locally
 
-With a Python environment containing the bot dependencies active:
+After completing the install steps above:
 
 ```bash
 cd web
 npm run dev
 ```
+
+The root development command uses `bot/.venv` directly and starts all three services together. Run it from `web/`, not `web/frontend/`; starting only the frontend leaves Vite's API proxy without the Express server on port 3001.
 
 This starts:
 
@@ -40,12 +42,22 @@ This starts:
 
 The browser sends same-origin `/api/v1` requests. Vite proxies them to Express, and Express forwards them to FastAPI. Set `BOT_API_URL` if FastAPI is not available at `http://localhost:8000`; see `.env.example` for supported server variables.
 
-To run the services separately:
+To run the services separately, use three terminals from the repository root:
 
 ```bash
+# Terminal 1
 bot/.venv/bin/python -m uvicorn app.main:app --app-dir bot --reload --port 8000
+```
+
+```bash
+# Terminal 2
 cd web
 npm run dev:backend
+```
+
+```bash
+# Terminal 3
+cd web
 npm run dev:frontend
 ```
 

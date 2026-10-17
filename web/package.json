@@ -6,10 +6,10 @@
     "backend"
   ],
   "scripts": {
-    "dev": "concurrently -n frontend,backend,bot -c cyan,magenta,green \"npm run dev --workspace frontend\" \"npm run dev --workspace backend\" \"npm run dev:bot\"",
+    "dev": "concurrently --kill-others-on-fail -n frontend,backend,bot -c cyan,magenta,green \"npm run dev --workspace frontend\" \"npm run dev --workspace backend\" \"npm run dev:bot\"",
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:backend": "npm run dev --workspace backend",
-    "dev:bot": "python3 -m uvicorn app.main:app --app-dir ../bot --reload --port 8000",
+    "dev:bot": "../bot/.venv/bin/python -m uvicorn app.main:app --app-dir ../bot --reload --port 8000",
     "build": "npm run build --workspace frontend && npm run build --workspace backend",
     "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace backend"
   },

@@ -27,7 +27,7 @@ If a detail is missing, make a modest, reversible assumption and state it in you
 
 ## Git and concurrent-agent safety
 
-- **Do not work directly on `main`.** Use a short-lived branch such as `feature/<owner>-<task>`.
+- **Do not work directly on `main`.**
 - If agents operate on the same machine, prefer **separate Git worktrees**. Separate branches alone do not isolate uncommitted files in a shared working directory.
 - Run `git status` and inspect the relevant diff before editing and before committing.
 - Commit small, coherent units with descriptive messages. Stage only your files; prefer `git add <paths>` over `git add .`.

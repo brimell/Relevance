@@ -31,6 +31,7 @@ If a detail is missing, make a modest, reversible assumption and state it in you
 - If agents operate on the same machine, prefer **separate Git worktrees**. Separate branches alone do not isolate uncommitted files in a shared working directory.
 - Run `git status` and inspect the relevant diff before editing and before committing.
 - Commit small, coherent units with descriptive messages. Stage only your files; prefer `git add <paths>` over `git add .`.
+- After completing each change, create a commit containing that change before moving on to another change.
 - Pull/rebase or merge the latest shared branch before integration, resolving conflicts deliberately and checking affected behaviour.
 - Never force-push shared branches, delete another person's branch, or run destructive commands such as `git reset --hard`, `git clean -fd`, or blanket file restores without explicit human authorisation.
 - Do not amend or rewrite commits authored by another teammate.

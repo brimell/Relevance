@@ -10,9 +10,11 @@ This repository currently contains:
 
 - a responsive React marketing site;
 - a minimal Express API with `GET /api/health`;
+- a FastAPI bot API with live arXiv ingestion;
+- a scheduled GitHub Actions demo that evaluates new papers through Nebius and creates digest issues;
 - the full product proposal in [`brief.md`](brief.md).
 
-The GitHub App, repository analysis, arXiv ingestion, paper matching, persistence, and issue publication are **not yet implemented**. The findings displayed on the website are illustrative.
+The daily Actions workflow provides the current hackathon path: live arXiv ingestion, a bounded repository snapshot, Nebius evaluation, digest issue creation, and state stored in a tracking issue. A separately installed GitHub App, full repository analysis, MCP tools, and production persistence are not implemented. The findings displayed on the website remain illustrative.
 
 ## Tech stack
 
@@ -67,7 +69,7 @@ PORT=4000 npm run dev:backend
 ```text
 .
 ├── brief.md                 # Product plan and intended architecture
-├── bot/                     # Placeholder; bot not implemented
+├── bot/                     # FastAPI contract, arXiv client, and daily scan
 └── web/
     ├── frontend/            # React/Vite landing page
     ├── backend/             # Express health-check API

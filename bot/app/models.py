@@ -12,7 +12,8 @@ from pydantic import (
 )
 
 SIMULATION_NOTICE = (
-    "Demo simulation only: no repository was scanned and no GitHub issue was created."
+    "Paper metadata is fetched live from arXiv. Repository analysis, relevance scoring, "
+    "and GitHub issue creation are simulated."
 )
 
 
@@ -119,6 +120,7 @@ class FindingSource(APIModel):
     identifier: str = Field(min_length=1, max_length=200)
     url: HttpUrl
     published_at: datetime | None = None
+    authors: list[str] = Field(default_factory=list)
 
 
 class FindingIssue(APIModel):

@@ -140,6 +140,12 @@ button { color: inherit; }
 .monitoring-state strong { font-size: 12px; }
 .monitoring-state span:last-child { color: var(--text-muted); font-size: 11px; }
 .demo-label { display: inline-flex; align-items: center; min-height: 27px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border)); border-radius: 5px; color: var(--warning); font-size: 11px; white-space: nowrap; }
+.api-message { max-width: 1440px; display: flex; align-items: center; gap: 10px; margin: 0 auto 20px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 12px; }
+.api-message strong { flex: none; }
+.api-message span { flex: 1; color: var(--text-secondary); }
+.api-message button { min-height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-raised); cursor: pointer; }
+.api-message.error { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.api-message.error strong { color: var(--danger); }
 
 .overview-layout { max-width: 1440px; display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 20px; margin: 0 auto; }
 .activity-panel, .run-summary, .recent-findings, .settings-panel { border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); }
@@ -162,7 +168,8 @@ button { color: inherit; }
 .run-summary h2 { margin: 7px 0 13px; font-size: 17px; line-height: 1.35; }
 .run-summary > p:last-of-type { color: var(--text-secondary); font-size: 13px; }
 .run-summary button { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; margin-top: 18px; padding: 0 12px; border: 0; border-radius: 6px; color: var(--accent-text); background: var(--accent); font-weight: 650; cursor: pointer; }
-.run-summary button:hover { background: var(--accent-hover); }
+.run-summary button:hover:not(:disabled) { background: var(--accent-hover); }
+.run-summary button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .recent-findings { max-width: 1440px; margin: 20px auto 0; }
 .section-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 20px 22px; border-bottom: 1px solid var(--border-subtle); }
@@ -210,6 +217,7 @@ button { color: inherit; }
 .finding-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
 .finding-type { color: var(--text-secondary); font-size: 11px; font-weight: 700; }
 .priority, .strength { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-secondary); font-size: 10px; white-space: nowrap; }
+.priority-critical { border-color: color-mix(in srgb, var(--danger) 48%, var(--border)); color: var(--danger); }
 .priority-high { border-color: color-mix(in srgb, var(--warning) 38%, var(--border)); color: var(--warning); }
 .strength.strong { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); color: var(--success); background: var(--accent-surface); }
 .insight-link { display: block; max-width: 760px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
@@ -227,7 +235,8 @@ button { color: inherit; }
 .affected-file code { overflow-wrap: anywhere; font: 600 11px 'JetBrains Mono', ui-monospace, monospace; }
 .finding-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .finding-actions button, .detail-actions button, .detail-actions a { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); background: var(--surface); font-size: 11px; font-weight: 650; text-decoration: none; cursor: pointer; }
-.finding-actions button:hover, .detail-actions button:hover, .detail-actions a:hover { border-color: var(--border); color: var(--text); background: var(--surface-hover); }
+.finding-actions button:hover:not(:disabled), .detail-actions button:hover:not(:disabled), .detail-actions a:hover { border-color: var(--border); color: var(--text); background: var(--surface-hover); }
+.finding-actions button:disabled, .detail-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
 .finding-actions .primary-action { border-color: var(--accent); color: var(--accent-text); background: var(--accent); }
 .finding-actions .primary-action:hover { color: var(--accent-text); background: var(--accent-hover); }
 .finding-actions .active, .detail-actions .active { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); color: var(--success); background: var(--accent-surface); }

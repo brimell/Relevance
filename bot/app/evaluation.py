@@ -11,6 +11,7 @@ from .models import EvidenceLabel, FindingType, ProjectProfile, Relevance, Sever
 from .repository import RepositorySnapshot
 
 DEFAULT_NEBIUS_URL = "https://api.tokenfactory.nebius.com/v1"
+NEBIUS_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 
 
 class EvaluationError(Exception):
@@ -44,7 +45,7 @@ def evaluate_with_nebius(
     if not papers:
         return []
     api_key = required_env("NEBIUS_API_KEY")
-    model = required_env("NEBIUS_MODEL")
+    model = NEBIUS_MODEL
     base_url = os.getenv("NEBIUS_BASE_URL", DEFAULT_NEBIUS_URL).rstrip("/")
     paper_data = [asdict(paper) for paper in papers]
     for paper in paper_data:

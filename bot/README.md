@@ -16,7 +16,7 @@ python -m venv .venv
 python -m pip install -r requirements-dev.txt
 ```
 
-- `NEBIUS_API_KEY` and `NEBIUS_MODEL` are required for repository-aware evaluation.
+- `NEBIUS_API_KEY` is required for repository-aware evaluation. The Nebius model is configured in `app/evaluation.py`.
 - `GITHUB_TOKEN` is required for private repository ingestion and GitHub issue publication; public repositories can be scanned without it.
 - The machine running the API needs outbound HTTPS access to `export.arxiv.org` and the configured Nebius endpoint.
 
@@ -137,7 +137,6 @@ The repository includes `.github/workflows/relevance.yml`. It runs once a day an
 Configure the repository before running it:
 
 - Add the Actions secret `NEBIUS_API_KEY`.
-- Add the Actions variable `NEBIUS_MODEL` with a model available to your Nebius project.
 - Enable workflow write access to issues if the repository's default Actions permissions prevent it.
 
 The workflow uses the built-in `GITHUB_TOKEN`; no personal access token is required. The state issue is deliberately visible and editable so the demo is easy to inspect and reset. Delete that issue to reset the processed-paper history.

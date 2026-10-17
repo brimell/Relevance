@@ -36,5 +36,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
-          NEBIUS_MODEL: ${{ vars.NEBIUS_MODEL }}
         run: python -m app.daily

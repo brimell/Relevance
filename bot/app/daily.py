@@ -13,7 +13,7 @@ from .arxiv import ArxivPaper, fetch_recent_papers
 
 STATE_TITLE = "[Relevance] Bot state (do not close)"
 STATE_MARKER = "relevance-state"
-DEFAULT_NEBIUS_URL = "https://api.studio.nebius.ai/v1"
+DEFAULT_NEBIUS_URL = "https://api.tokenfactory.nebius.com/v1"
 CONTEXT_FILES = (
     "README.md",
     "README.rst",

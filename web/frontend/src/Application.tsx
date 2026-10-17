@@ -42,7 +42,8 @@ const repository = {
 } as const
 const repositoryName = `${repository.owner}/${repository.repo}`
 const repositoryUrl = `https://github.com/${repositoryName}`
-const DEFAULT_SIMULATION_NOTICE = 'Demo simulation only: no repository was scanned and no GitHub issue was created.'
+const DEFAULT_SIMULATION_NOTICE = 'Paper metadata is fetched live from arXiv. Repository analysis, relevance scoring, and GitHub issue creation are simulated.'
+const MAX_SCAN_POLLS = 10
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
@@ -90,6 +91,12 @@ function relevanceLabel(finding: Finding) {
 
 function capitalise(value: string) {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`
+}
+
+function authorLabel(authors: string[]) {
+  if (authors.length === 0) return 'Authors not provided'
+  if (authors.length <= 3) return authors.join(', ')
+  return `${authors.slice(0, 3).join(', ')} and ${authors.length - 3} more`
 }
 
 function errorMessage(error: unknown) {
@@ -166,7 +173,7 @@ function Application() {
     const normalisedQuery = query.trim().toLowerCase()
     return findings.filter((finding) => {
       const status = statuses[finding.id] ?? 'new'
-      const searchable = `${finding.title} ${finding.summary} ${finding.suggested_action} ${finding.source.identifier}`.toLowerCase()
+      const searchable = `${finding.title} ${finding.summary} ${finding.suggested_action} ${finding.source.identifier} ${finding.source.authors.join(' ')}`.toLowerCase()
       const publishedYear = finding.source.published_at ? new Date(finding.source.published_at).getFullYear() : null
       const matchesQuery = !normalisedQuery || searchable.includes(normalisedQuery)
       const matchesSource = sourceFilter === 'all' || finding.source.type === sourceFilter
@@ -225,8 +232,13 @@ function Application() {
       setScan(currentScan)
       setSimulationNotice(currentScan.simulation_notice)
 
+      let pollCount = 0
       while (currentScan.status === 'queued' || currentScan.status === 'running') {
-        await wait(650)
+        if (pollCount >= MAX_SCAN_POLLS) {
+          throw new Error('The scan did not complete in time. Its state may still be available from the bot API.')
+        }
+        pollCount += 1
+        await wait(1_000)
         if (scanRun.current !== run) return
         currentScan = await getScan(currentScan.id)
         setScan(currentScan)
@@ -245,8 +257,9 @@ function Application() {
         ...current,
       }))
       setSelectedId(response.findings[0]?.id ?? null)
-      setLastScan(`Simulated scan completed ${formatDate(currentScan.completed_at)}`)
-      notify(`Simulated scan complete: ${response.count} ${response.count === 1 ? 'finding' : 'findings'} returned by the bot API.`)
+      setApiError(null)
+      setLastScan(`arXiv checked ${formatDate(currentScan.completed_at)}`)
+      notify(`Scan complete: ${response.count} recent ${response.count === 1 ? 'paper' : 'papers'} returned by the bot API.`)
     } catch (error: unknown) {
       const message = errorMessage(error)
       setApiError(message)
@@ -299,7 +312,7 @@ function Application() {
         <div className="repository-context"><span className="context-label">Selected repository</span><div><Icon name="github" size={17} /><strong>{repositoryName}</strong></div><span className="branch-name">{repository.ref}</span></div>
         <nav>{navigation.map((item) => <button className={`nav-item ${page === item.id ? 'active' : ''}`} key={item.id} onClick={() => navigate(item.id)}><Icon name={item.icon} /><span>{item.label}</span>{item.count !== undefined && <em>{item.count}</em>}</button>)}</nav>
         <div className="monitor-summary"><div><span className={`status-dot ${monitoringEnabled ? '' : 'paused'}`} /><strong>{monitoringEnabled ? 'Schedule preference on' : 'Manual scans only'}</strong></div><p>{monitoringEnabled ? `Every ${scanInterval.toLowerCase()} (preference only)` : 'Use Run scan to query the API'}</p></div>
-        <div className="demo-note"><span>Bot API simulation</span><p>{simulationNotice}</p></div>
+        <div className="demo-note"><span>Integration boundary</span><p>{simulationNotice}</p></div>
       </aside>
 
       <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />
@@ -316,14 +329,14 @@ function Application() {
       </header>
 
       {page === 'overview' && <main className="content-page overview-page">
-        <header className="page-header"><div><p className="eyebrow">Bot API workbench</p><h1>Review findings from the shared scan service</h1><p>Run the deterministic bot scan, inspect its returned sources and approve simulated issue creation.</p></div><div className="monitoring-state"><span className={`status-dot ${apiError ? 'paused' : ''}`} /><div><strong>{apiError ? 'API connection failed' : 'API connection ready'}</strong><span>{scanning ? scan.progress.stage : lastScan}</span></div></div></header>
+        <header className="page-header"><div><p className="eyebrow">Bot API workbench</p><h1>Review papers from the shared scan service</h1><p>Fetch recent paper metadata from arXiv, inspect the available evidence and explicitly approve any simulated issue action.</p></div><div className="monitoring-state"><span className={`status-dot ${apiError ? 'paused' : ''}`} /><div><strong>{apiError ? 'API connection failed' : 'API connection ready'}</strong><span>{scanning ? scan.progress.stage : lastScan}</span></div></div></header>
 
         {apiError && <div className="api-message error" role="alert"><strong>Bot API unavailable</strong><span>{apiError}</span><button onClick={runScan} disabled={scanning}>Retry with a scan</button></div>}
         {scanning && scan && <ScanStatus scan={scan} />}
 
         <div className="overview-layout">
           <section className="activity-panel" aria-labelledby="activity-title">
-            <div className="panel-heading"><div><p className="eyebrow">Shared API state</p><h2 id="activity-title">What the web app received</h2></div><span className="demo-label">Simulation</span></div>
+            <div className="panel-heading"><div><p className="eyebrow">Shared API state</p><h2 id="activity-title">What the web app received</h2></div><span className="demo-label">Live metadata</span></div>
             <ol className="activity-timeline">
               <li><span className="activity-icon"><Icon name="github" size={16} /></span><div><strong>Repository selected</strong><p>The owner, repository and ref sent to the scan endpoint.</p></div><b>{repositoryName}</b></li>
               <li><span className="activity-icon"><Icon name="radar" size={16} /></span><div><strong>Latest scan state</strong><p>{scan?.progress.stage ?? 'No scan has been started from this browser session.'}</p></div><b>{scan ? capitalise(scan.status) : 'Not run'}</b></li>
@@ -333,14 +346,14 @@ function Application() {
             <footer><Icon name="clock" size={15} /><span>{lastScan}</span><button onClick={() => navigate('repositories')}>View controls <Icon name="arrow" size={14} /></button></footer>
           </section>
 
-          <aside className="run-summary" aria-label="Finding summary"><p className="eyebrow">API findings</p><strong className="summary-number">{findings.length}</strong><h2>{findings.length === 1 ? 'finding available' : 'findings available'}</h2><p>{findingsLoading ? 'Loading repository history from the bot API.' : findings.length > 0 ? 'These records came from the bot API’s in-memory deterministic simulation.' : 'No findings are stored for this repository yet. Run a scan to generate demo records.'}</p><button onClick={() => findings.length > 0 ? navigate('discoveries') : runScan()} disabled={scanning}>{findings.length > 0 ? 'Review findings' : 'Run first scan'} <Icon name="arrow" size={15} /></button></aside>
+          <aside className="run-summary" aria-label="Finding summary"><p className="eyebrow">API findings</p><strong className="summary-number">{findings.length}</strong><h2>{findings.length === 1 ? 'paper available' : 'papers available'}</h2><p>{findingsLoading ? 'Loading repository history from the bot API.' : findings.length > 0 ? 'These records contain live arXiv metadata held in the bot API’s in-memory store.' : 'No papers are stored for this repository yet. Run a scan to query arXiv.'}</p><button onClick={() => findings.length > 0 ? navigate('discoveries') : runScan()} disabled={scanning}>{findings.length > 0 ? 'Review findings' : 'Run first scan'} <Icon name="arrow" size={15} /></button></aside>
         </div>
 
         <section className="recent-findings" aria-labelledby="recent-title">
           <div className="section-title-row"><div><p className="eyebrow">Recent findings</p><h2 id="recent-title">Returned by the bot API</h2></div><button onClick={() => navigate('discoveries')}>View discoveries</button></div>
           <div className="recent-list">
             {findings.slice(0, 2).map((finding) => <button key={finding.id} onClick={() => selectFinding(finding.id)}><span className="finding-type">{sourceTypeLabel(finding)}</span><strong>{finding.title}</strong><code>{finding.source.identifier}</code><Icon name="chevron" size={17} /></button>)}
-            {!findingsLoading && findings.length === 0 && <div className="empty-state"><h2>No scans yet</h2><p>Run a scan to request deterministic demo findings from the bot API.</p><button onClick={runScan}>Run scan</button></div>}
+            {!findingsLoading && findings.length === 0 && <div className="empty-state"><h2>No scans yet</h2><p>Run a scan to request recent paper metadata from arXiv through the bot API.</p><button onClick={runScan}>Run scan</button></div>}
           </div>
         </section>
       </main>}
@@ -373,8 +386,8 @@ function Application() {
                 <div className="finding-row-main">
                   <div className="finding-heading"><span className="finding-type">{sourceTypeLabel(finding)}</span><span className={`priority priority-${finding.severity}`}>{capitalise(finding.severity)} severity</span><span className={`strength ${finding.relevance === 'high' ? 'strong' : ''}`}><Icon name="check" size={13} />{relevanceLabel(finding)}</span></div>
                   <button className="insight-link" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)} aria-expanded={expanded} aria-controls={`finding-detail-${finding.id}`}><h2>{finding.title}</h2></button>
-                  <p className="paper-meta"><a href={finding.source.url} target="_blank" rel="noreferrer">{finding.source.identifier}<Icon name="external" size={12} /></a><span>{capitalise(finding.source.type)} · {formatDate(finding.source.published_at)}</span></p>
-                  <p className="why-relevant"><strong>API summary</strong>{finding.summary}</p>
+                  <p className="paper-meta"><a href={finding.source.url} target="_blank" rel="noreferrer">{finding.source.identifier}<Icon name="external" size={12} /></a><span>{authorLabel(finding.source.authors)} · {formatDate(finding.source.published_at)}</span></p>
+                  <p className="why-relevant"><strong>arXiv abstract</strong>{finding.summary}</p>
                   <div className="finding-actions">
                     <button className="primary-action" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)}>{expanded ? 'Hide evidence' : 'View evidence'}</button>
                     <button className={status === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(finding.id, status === 'saved' ? 'new' : 'saved')}><Icon name="bookmark" size={15} />{status === 'saved' ? 'Saved' : 'Save'}</button>
@@ -386,9 +399,9 @@ function Application() {
                 {expanded && <div className="finding-detail" id={`finding-detail-${finding.id}`}>
                   <header className="detail-intro"><div><p className="eyebrow">Available evidence</p><h3>{finding.title}</h3><p>{finding.source.identifier} · {formatDate(finding.source.published_at)}</p></div><button className="detail-close" onClick={() => setDetailOpen(false)} aria-label="Close evidence"><Icon name="close" size={17} /></button></header>
                   <div className="detail-grid">
-                    <section className="detail-section"><div className="section-heading"><h3>Why Relevance flagged it</h3><span>Simulated inference</span></div><p>{finding.summary}</p></section>
+                    <section className="detail-section"><div className="section-heading"><h3>Paper summary</h3><span>Reported by arXiv</span></div><p>{finding.summary}</p></section>
                     <section className="detail-section"><div className="section-heading"><h3>Affected implementation</h3><span>Not provided</span></div><p>The current API schema does not identify affected files or repository excerpts. No code path is inferred by the web application.</p></section>
-                    <section className="detail-section source-evidence wide"><h3>Source evidence</h3><p>The bot API provides the source identifier and URL, but no abstract excerpt, author list or quoted claim. Relevance has not read or validated a full paper in this build.</p><a href={finding.source.url} target="_blank" rel="noreferrer">Verify at {finding.source.identifier}<Icon name="external" size={12} /></a></section>
+                    <section className="detail-section source-evidence wide"><h3>Source evidence</h3><p><strong>{authorLabel(finding.source.authors)}</strong>. The title, authors, publication time and abstract above come from arXiv metadata. Relevance has not read or validated the full paper.</p><a href={finding.source.url} target="_blank" rel="noreferrer">Verify at {finding.source.identifier}<Icon name="external" size={12} /></a></section>
                     <section className="detail-section experiment wide"><div className="section-heading"><h3>Suggested action</h3><span>Needs verification</span></div><p>{finding.suggested_action}</p></section>
                     <section className="detail-section wide"><div className="section-heading"><h3>Publication status</h3><span>{finding.issue.state === 'created' ? 'Simulated created' : 'Not created'}</span></div><p>{finding.issue.state === 'created' ? `The API recorded a simulated issue at ${formatDate(finding.issue.created_at)}. Its example.invalid URL is intentionally non-actionable.` : 'No issue simulation has been approved for this finding.'}</p></section>
                   </div>
@@ -428,7 +441,7 @@ function Application() {
 }
 
 function ScanStatus({ scan }: { scan: Scan }) {
-  const steps = ['Queued', 'Generating findings', 'Complete']
+  const steps = ['Queued', 'Fetching arXiv', 'Complete']
   const currentIndex = scan.status === 'queued' ? 0 : scan.status === 'running' ? 1 : 2
   return <div className="scan-status" role="status" aria-live="polite"><div className="scan-status-copy"><span className="spinner" aria-hidden="true" /><strong>{scan.progress.stage}</strong><span>{scan.progress.completed_steps} of {scan.progress.total_steps} API steps complete</span></div><ol aria-label="Scan progress">{steps.map((item, index) => <li key={item} className={index === currentIndex ? 'current' : ''}>{item}</li>)}</ol></div>
 }

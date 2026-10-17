@@ -2,6 +2,7 @@ import express, { type ErrorRequestHandler } from 'express'
 
 const DEFAULT_PORT = 3001
 const DEFAULT_BOT_API_URL = 'http://localhost:8000'
+const DEFAULT_BOT_API_TIMEOUT_MS = 75_000
 
 function getBotApiUrl(value: string | undefined): URL {
   const url = new URL(value ?? DEFAULT_BOT_API_URL)
@@ -13,22 +14,29 @@ function getBotApiUrl(value: string | undefined): URL {
   return url
 }
 
-function getPort(value: string | undefined): number {
-  if (value === undefined) {
-    return DEFAULT_PORT
+function getPositiveInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  maximum: number,
+): number {
+  if (value === undefined) return fallback
+
+  const parsedValue = Number(value)
+  if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > maximum) {
+    throw new Error(`${name} must be an integer between 1 and ${maximum}`)
   }
-
-  const parsedPort = Number(value)
-
-  if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65_535) {
-    throw new Error('PORT must be an integer between 1 and 65535')
-  }
-
-  return parsedPort
+  return parsedValue
 }
 
 const app = express()
-const port = getPort(process.env.PORT)
+const port = getPositiveInteger(process.env.PORT, DEFAULT_PORT, 'PORT', 65_535)
+const botApiTimeoutMs = getPositiveInteger(
+  process.env.BOT_API_TIMEOUT_MS,
+  DEFAULT_BOT_API_TIMEOUT_MS,
+  'BOT_API_TIMEOUT_MS',
+  120_000,
+)
 const botApiUrl = getBotApiUrl(process.env.BOT_API_URL)
 
 app.disable('x-powered-by')
@@ -48,11 +56,14 @@ app.use('/api/v1', async (request, response) => {
     const upstreamUrl = new URL(request.originalUrl, botApiUrl)
     const upstreamResponse = await fetch(upstreamUrl, {
       method: request.method,
-      headers: request.is('application/json') ? { 'Content-Type': 'application/json' } : undefined,
+      headers: {
+        Accept: 'application/json',
+        ...(request.is('application/json') ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: request.method === 'GET' || request.method === 'HEAD'
         ? undefined
         : JSON.stringify(request.body),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(botApiTimeoutMs),
     })
     const body = await upstreamResponse.text()
     const contentType = upstreamResponse.headers.get('content-type')
@@ -61,8 +72,11 @@ app.use('/api/v1', async (request, response) => {
     response.status(upstreamResponse.status).send(body)
   } catch (error) {
     console.error('Bot API request failed', error)
-    response.status(502).json({
-      error: 'The bot API is unavailable. Start it on port 8000 or set BOT_API_URL.',
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError'
+    response.status(timedOut ? 504 : 502).json({
+      error: timedOut
+        ? 'The bot API timed out while processing the request.'
+        : 'The bot API is unavailable. Check BOT_API_URL and the upstream service.',
     })
   }
 })

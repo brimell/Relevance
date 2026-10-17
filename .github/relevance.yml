@@ -1,0 +1,10 @@
+# Categories explicitly selected for this repository.
+# The daily agent may keep up to three additional inferred categories in its state issue.
+arxiv:
+  categories:
+    - cs.AI
+    - cs.LG
+    - cs.CL
+  max_papers_per_scan: 10
+
+max_findings_per_digest: 3

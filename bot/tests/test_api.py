@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app.arxiv import ArxivError, ArxivPaper
 from app.main import app
 from app.service import demo_service
 
@@ -10,6 +13,16 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_demo_service() -> None:
     demo_service.reset()
+    demo_service._paper_provider = lambda: [
+        ArxivPaper(
+            identifier="arXiv:2601.00001v1",
+            url="https://arxiv.org/abs/2601.00001v1",
+            title="A live paper title",
+            summary="A real abstract returned by the test provider.",
+            authors=["Ada Lovelace", "Alan Turing"],
+            published_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+    ]
 
 
 def start_scan(owner: str = "octo-org", repo: str = "demo-repo") -> dict:
@@ -42,7 +55,7 @@ def test_health_and_generated_docs_identify_simulation() -> None:
     assert openapi.status_code == 200
     assert openapi.json()["info"]["title"] == "Relevance Bot API"
     schema = openapi.json()
-    assert "in-memory deterministic demo" in schema["info"]["description"]
+    assert "fetches recent paper metadata from arXiv" in schema["info"]["description"]
     error_schema = {"$ref": "#/components/schemas/ErrorResponse"}
     assert (
         schema["paths"]["/api/v1/scans/{scan_id}"]["get"]["responses"]["404"][
@@ -78,11 +91,31 @@ def test_scan_lifecycle_and_findings() -> None:
     response = client.get(f"/api/v1/scans/{scan['id']}/findings")
     assert response.status_code == 200
     body = response.json()
-    assert body["count"] == 2
+    assert body["count"] == 1
     assert body["scan_id"] == scan["id"]
-    assert {item["source"]["type"] for item in body["findings"]} == {"paper", "cve"}
-    assert {item["severity"] for item in body["findings"]} == {"medium", "high"}
-    assert all(item["issue"]["state"] == "not_created" for item in body["findings"])
+    finding = body["findings"][0]
+    assert finding["source"]["type"] == "paper"
+    assert finding["source"]["identifier"] == "arXiv:2601.00001v1"
+    assert finding["source"]["authors"] == ["Ada Lovelace", "Alan Turing"]
+    assert finding["severity"] == "info"
+    assert finding["issue"]["state"] == "not_created"
+
+
+def test_arxiv_failure_marks_scan_failed() -> None:
+    def fail() -> list[ArxivPaper]:
+        raise ArxivError("The arXiv request timed out.")
+
+    demo_service._paper_provider = fail
+    scan = start_scan()
+    assert client.get(f"/api/v1/scans/{scan['id']}").json()["status"] == "running"
+
+    failed = client.get(f"/api/v1/scans/{scan['id']}")
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "failed"
+    assert failed.json()["error"] == "The arXiv request timed out."
+
+    findings = client.get(f"/api/v1/scans/{scan['id']}/findings")
+    assert findings.status_code == 409
 
 
 def test_active_duplicate_scan_returns_conflict() -> None:
@@ -101,7 +134,7 @@ def test_repository_history_and_simulated_issue_creation() -> None:
 
     history = client.get("/api/v1/repositories/octo-org/demo-repo/findings")
     assert history.status_code == 200
-    assert history.json()["count"] == 2
+    assert history.json()["count"] == 1
     finding_id = history.json()["findings"][0]["id"]
 
     rejected = client.post(

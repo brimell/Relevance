@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from threading import RLock
 from uuid import NAMESPACE_URL, uuid5
 
+from .arxiv import ArxivError, ArxivPaper, PaperProvider, fetch_recent_papers
 from .models import (
     Finding,
     FindingIssue,
@@ -37,10 +38,11 @@ def repository_key(repository: Repository) -> str:
 
 
 class DemoService:
-    """Deterministic in-memory simulation of integrations that do not exist yet."""
+    """In-memory scan service with live arXiv ingestion and simulated GitHub output."""
 
-    def __init__(self) -> None:
+    def __init__(self, paper_provider: PaperProvider = fetch_recent_papers) -> None:
         self._lock = RLock()
+        self._paper_provider = paper_provider
         self.reset()
 
     def reset(self) -> None:
@@ -168,7 +170,7 @@ class DemoService:
                     "status": ScanStatus.RUNNING,
                     "progress": ScanProgress(
                         percent=50,
-                        stage="Generating deterministic demo findings",
+                        stage="Preparing live arXiv request",
                         completed_steps=1,
                         total_steps=2,
                     ),
@@ -177,67 +179,64 @@ class DemoService:
                 deep=True,
             )
         elif scan.status is ScanStatus.RUNNING:
-            scan = scan.model_copy(
-                update={
-                    "status": ScanStatus.COMPLETED,
-                    "progress": ScanProgress(
-                        percent=100,
-                        stage="Simulated scan completed",
-                        completed_steps=2,
-                        total_steps=2,
-                    ),
-                    "updated_at": now,
-                    "completed_at": now,
-                },
-                deep=True,
-            )
-            self._materialize_findings(scan)
+            try:
+                papers = self._paper_provider()
+            except ArxivError as exc:
+                scan = scan.model_copy(
+                    update={
+                        "status": ScanStatus.FAILED,
+                        "progress": ScanProgress(
+                            percent=50,
+                            stage="arXiv ingestion failed",
+                            completed_steps=1,
+                            total_steps=2,
+                        ),
+                        "updated_at": now,
+                        "error": str(exc),
+                    },
+                    deep=True,
+                )
+            else:
+                scan = scan.model_copy(
+                    update={
+                        "status": ScanStatus.COMPLETED,
+                        "progress": ScanProgress(
+                            percent=100,
+                            stage="Recent arXiv papers retrieved",
+                            completed_steps=2,
+                            total_steps=2,
+                        ),
+                        "updated_at": now,
+                        "completed_at": now,
+                    },
+                    deep=True,
+                )
+                self._materialize_findings(scan, papers)
         self._scans[scan.id] = scan
         return scan
 
-    def _materialize_findings(self, scan: Scan) -> None:
+    def _materialize_findings(self, scan: Scan, papers: list[ArxivPaper]) -> None:
         key = repository_key(scan.repository)
-        templates = [
-            {
-                "source": FindingSource(
-                    type=FindingSourceType.PAPER,
-                    identifier="arXiv:2401.04088",
-                    url="https://arxiv.org/abs/2401.04088",
-                    published_at=datetime(2024, 1, 8, tzinfo=UTC),
-                ),
-                "severity": Severity.MEDIUM,
-                "relevance": Relevance.HIGH,
-                "title": "Review dependency behavior against recent supply-chain research",
-                "summary": (
-                    "Simulated paper-derived finding for the demo repository. "
-                    "No repository content was inspected."
-                ),
-                "suggested_action": (
-                    "Review dependency pinning and provenance checks with the engineering team."
-                ),
-            },
-            {
-                "source": FindingSource(
-                    type=FindingSourceType.CVE,
-                    identifier="CVE-2024-0001-DEMO",
-                    url="https://example.invalid/cve/CVE-2024-0001-DEMO",
-                    published_at=datetime(2024, 2, 1, tzinfo=UTC),
-                ),
-                "severity": Severity.HIGH,
-                "relevance": Relevance.MEDIUM,
-                "title": "Verify whether the simulated vulnerable component is in use",
-                "summary": (
-                    "Simulated CVE-derived finding. The identifier is intentionally not a real CVE "
-                    "and no dependency manifest was inspected."
-                ),
-                "suggested_action": (
-                    "Confirm the installed component version, then upgrade or document non-applicability."
-                ),
-            },
-        ]
-
         finding_ids: list[str] = []
-        for index, template in enumerate(templates, start=1):
+        for index, paper in enumerate(papers, start=1):
+            template = {
+                "source": FindingSource.model_validate(
+                    {
+                        "type": FindingSourceType.PAPER,
+                        "identifier": paper.identifier,
+                        "url": paper.url,
+                        "published_at": paper.published_at,
+                        "authors": paper.authors,
+                    }
+                ),
+                "severity": Severity.INFO,
+                "relevance": Relevance.LOW,
+                "title": paper.title[:240],
+                "summary": paper.summary[:2000],
+                "suggested_action": (
+                    "Review this paper manually. Repository-aware relevance scoring is not yet implemented."
+                ),
+            }
             finding_id = str(
                 uuid5(NAMESPACE_URL, f"relevance:finding:{scan.id}:{index}")
             )

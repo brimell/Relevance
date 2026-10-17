@@ -30,9 +30,9 @@ def create_app(service: DemoService = demo_service) -> FastAPI:
         title="Relevance Bot API",
         version="0.1.0",
         description=(
-            "Typed API contract for Relevance. This build is an in-memory deterministic demo: "
-            "it does not clone repositories, query paper/CVE feeds, persist data, or call GitHub. "
-            "Polling a scan advances its simulated state from queued to running to completed."
+            "Typed API contract for Relevance. A scan fetches recent paper metadata from arXiv. "
+            "Repository analysis, persistence, relevance scoring, and GitHub issue creation remain "
+            "simulated. Polling advances a scan from queued to running and then performs the fetch."
         ),
     )
 
@@ -66,10 +66,11 @@ def create_app(service: DemoService = demo_service) -> FastAPI:
             }
         },
         tags=["scans"],
-        summary="Queue a simulated repository scan",
+        summary="Queue a repository research scan",
         description=(
             "Creates an in-memory scan in queued state. It does not access the repository. "
-            "A second active scan for the same owner/repo returns 409."
+            "Completion fetches recent papers from arXiv. A second active scan for the same "
+            "owner/repo returns 409."
         ),
     )
     def start_scan(request: StartScanRequest) -> Scan:
@@ -90,10 +91,10 @@ def create_app(service: DemoService = demo_service) -> FastAPI:
             }
         },
         tags=["scans"],
-        summary="Get simulated scan status",
+        summary="Get scan status",
         description=(
-            "Each poll deterministically advances an active demo scan by one state: "
-            "queued to running, then running to completed."
+            "The first poll advances queued to running. The second fetches arXiv papers and "
+            "moves the scan to completed, or failed when ingestion fails."
         ),
     )
     def get_scan(scan_id: str = Path(min_length=1, max_length=100)) -> Scan:
@@ -118,7 +119,7 @@ def create_app(service: DemoService = demo_service) -> FastAPI:
             },
         },
         tags=["findings"],
-        summary="Get findings from a completed simulated scan",
+        summary="Get live arXiv findings from a completed scan",
     )
     def get_scan_findings(
         scan_id: str = Path(min_length=1, max_length=100),

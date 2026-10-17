@@ -1,8 +1,8 @@
 # Relevance web
 
-The web workspace contains the Relevance research workbench and a small Express server that proxies the bot API. The integrated journey is: run a simulated scan, poll its real API status, review returned findings, inspect the evidence available in the shared schema, and explicitly approve simulated issue creation.
+The web workspace contains the Relevance research workbench and a small Express server that proxies the bot API. The integrated journey is: start a scan, poll its API status, review live arXiv paper metadata, inspect the available evidence, and explicitly approve simulated issue creation.
 
-> **Simulation boundary:** the bot is an in-memory deterministic demo. It does not inspect the repository, query research/CVE feeds, persist data, authenticate with GitHub, or create GitHub issues. The web application displays the API's simulation notice and does not open its non-actionable `example.invalid` issue URLs.
+> **Live boundary:** completed scans fetch real paper metadata from arXiv. The bot does not inspect the repository, persist data, authenticate with GitHub, score repository relevance, or create real GitHub issues. The web application displays the API's simulation notice and does not open its non-actionable `example.invalid` issue URLs.
 
 ## Requirements
 
@@ -75,7 +75,9 @@ npm run dev:bot
 
 ## API integration
 
-The typed client in `frontend/src/api.ts` mirrors the schemas published by the bot's OpenAPI document. The UI uses:
+The typed client in `frontend/src/api.ts` mirrors the schemas published by the bot's OpenAPI document, including arXiv author metadata. Browser requests allow 90 seconds and Express allows 75 seconds by default because the bot supports arXiv timeouts of up to 60 seconds. Set `BOT_API_TIMEOUT_MS` on the Express service to override its upstream timeout (maximum 120 seconds).
+
+The UI uses:
 
 - `GET /api/v1/repositories/{owner}/{repo}/findings`
 - `POST /api/v1/scans`
@@ -83,4 +85,4 @@ The typed client in `frontend/src/api.ts` mirrors the schemas published by the b
 - `GET /api/v1/scans/{scan_id}/findings`
 - `POST /api/v1/findings/{finding_id}/issues`
 
-Fields absent from the shared API—such as affected files, repository excerpts, paper authors and quoted evidence—are shown as unavailable rather than filled with sample content.
+Fields absent from the shared API—such as affected files, repository excerpts and quoted full-paper evidence—are shown as unavailable rather than filled with sample content.

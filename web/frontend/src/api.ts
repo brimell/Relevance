@@ -32,6 +32,7 @@ export type Finding = {
     identifier: string
     url: string
     published_at: string | null
+    authors: string[]
   }
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
   relevance: 'high' | 'medium' | 'low'
@@ -79,15 +80,27 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 90_000
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
-  })
+  let response: Response
+
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...init?.headers,
+      },
+      signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new ApiError(504, 'The bot API took too long to respond. Please try again.')
+    }
+    throw new ApiError(0, 'The bot API is unavailable. Check the service and try again.')
+  }
 
   if (!response.ok) {
     let message = `The bot API returned ${response.status}.`

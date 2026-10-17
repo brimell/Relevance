@@ -277,7 +277,6 @@ function Application() {
 
   const selected = findings.find((finding) => finding.id === selectedId) ?? findings[0]
   const scanning = scanStage !== null
-  const activeFilterCount = [typeFilter, priorityFilter, dateFilter].filter((value) => value !== 'all').length + (statusFilter !== 'active' ? 1 : 0)
 
   function notify(message: string) {
     setToast(message)
@@ -291,11 +290,11 @@ function Application() {
     if (nextPage !== 'discoveries') setDetailOpen(false)
   }
 
-  function selectFinding(id: string, investigate = false) {
+  function selectFinding(id: string) {
     setSelectedId(id)
     setPage('discoveries')
     setDetailOpen(true)
-    setInvestigating(investigate)
+    setInvestigating(false)
     setQuestion('')
     setAnswer(null)
   }
@@ -355,7 +354,7 @@ function Application() {
   ]
 
   return (
-    <div className={`application ${detailOpen ? 'detail-is-open' : ''} ${mobileNavOpen ? 'nav-is-open' : ''}`}>
+    <div className={`application ${mobileNavOpen ? 'nav-is-open' : ''}`}>
       <aside className="sidebar" aria-label="Application navigation">
         <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><span /></span><span>Relevance</span></div>
         <div className="repository-context">
@@ -420,72 +419,68 @@ function Application() {
         </section>
       </main>}
 
-      {page === 'discoveries' && <main className="workspace" id="discoveries">
-        <section className="finding-pane" aria-labelledby="discoveries-title">
-          <header className="page-header compact">
-            <div><p className="eyebrow">Evidence-backed feed</p><h1 id="discoveries-title">Discoveries</h1><p>Start with the affected implementation, then inspect the paper and reasoning.</p></div>
+      {page === 'discoveries' && <main className="content-page discoveries-page" id="discoveries">
+        <div className="discoveries-shell">
+          <header className="page-header discoveries-header">
+            <div><p className="eyebrow">Evidence-backed feed</p><h1 id="discoveries-title">Discoveries</h1><p>Review the strongest code connections first. Open a finding only when you need its supporting evidence.</p></div>
             <div className="finding-count"><strong>{visibleFindings.length}</strong><span>{visibleFindings.length === 1 ? 'finding' : 'findings'}</span></div>
           </header>
 
           {scanning && <ScanStatus stage={scanStage} />}
 
-          <div className="filter-toolbar">
-            <label className="search-field"><span className="sr-only">Search discoveries</span><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search insight, file or paper" /></label>
-            <div className="filter-count"><Icon name="filter" size={15} />{activeFilterCount > 0 ? `${activeFilterCount} filters` : 'Filters'}</div>
-            <label><span>Type</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | FindingType)}><option value="all">All types</option><option>Potential improvement</option><option>Contradictory finding</option><option>New technique</option></select></label>
-            <label><span>Priority</span><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as 'all' | Priority)}><option value="all">All priorities</option><option>High</option><option>Medium</option></select></label>
-            <label><span>Published</span><select value={dateFilter} onChange={(event) => setDateFilter(event.target.value as 'all' | '2023' | '2020')}><option value="all">Any date</option><option value="2023">Since 2023</option><option value="2020">Since 2020</option></select></label>
-            <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}><option value="active">Active</option><option value="all">All</option><option value="new">New</option><option value="saved">Saved</option><option value="dismissed">Dismissed</option></select></label>
-          </div>
+          <section className="discovery-controls" aria-label="Discovery filters">
+            <div className="filter-toolbar">
+              <label className="search-field"><span className="sr-only">Search discoveries</span><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search insight, file or paper" /></label>
 
-          <div className="finding-list">
+              <label><span>Type</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | FindingType)}><option value="all">All types</option><option>Potential improvement</option><option>Contradictory finding</option><option>New technique</option></select></label>
+              <label><span>Priority</span><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as 'all' | Priority)}><option value="all">All priorities</option><option>High</option><option>Medium</option></select></label>
+              <label><span>Published</span><select value={dateFilter} onChange={(event) => setDateFilter(event.target.value as 'all' | '2023' | '2020')}><option value="all">Any date</option><option value="2023">Since 2023</option><option value="2020">Since 2020</option></select></label>
+              <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}><option value="active">Active</option><option value="all">All</option><option value="new">New</option><option value="saved">Saved</option><option value="dismissed">Dismissed</option></select></label>
+            </div>
+          </section>
+
+          <section className="finding-list" aria-labelledby="discoveries-title">
             {visibleFindings.length > 0 ? visibleFindings.map((finding) => {
               const status = statuses[finding.id]
-              return <article className={`finding-row ${selected.id === finding.id ? 'selected' : ''}`} key={finding.id}>
+              const expanded = detailOpen && selected.id === finding.id
+              return <article className={`finding-row ${expanded ? 'selected' : ''}`} key={finding.id}>
                 <div className="finding-row-main">
-                  <div className="finding-heading"><span className="finding-type">{finding.type}</span><span className={`priority priority-${finding.priority.toLowerCase()}`}>{finding.priority} priority</span><span className={`strength ${finding.strength === 'Strong match' ? 'strong' : ''}`}><Icon name="check" size={13} />{finding.strength}</span></div>
-                  <button className="insight-link" onClick={() => selectFinding(finding.id)}><h2>{finding.insight}</h2></button>
-                  <p className="paper-meta"><a href={finding.paperUrl} target="_blank" rel="noreferrer">{finding.title}<Icon name="external" size={12} /></a><span>{finding.authors} · {finding.publishedAt} · {finding.arxivId}</span></p>
-                  <a className="code-excerpt" href={sourceUrl(finding)} target="_blank" rel="noreferrer" aria-label={`Open ${finding.code.path} on GitHub`}>
-                    <span><Icon name="code" size={15} /><code>{finding.code.path}</code><small>{finding.code.reference}</small><Icon name="external" size={13} /></span>
-                    <pre>{finding.code.lines.slice(0, 3).map((line, index) => <span key={`${line}-${index}`}><b>{index + 1}</b>{line}</span>)}</pre>
-                  </a>
+                  <div className="finding-heading"><span className="finding-type">{finding.type}</span><span className={`priority priority-${finding.priority.toLowerCase()}`}>{finding.priority}</span><span className={`strength ${finding.strength === 'Strong match' ? 'strong' : ''}`}><Icon name="check" size={13} />{finding.strength}</span></div>
+                  <button className="insight-link" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)} aria-expanded={expanded} aria-controls={`finding-detail-${finding.id}`}><h2>{finding.insight}</h2></button>
+                  <div className="paper-meta"><a href={finding.paperUrl} target="_blank" rel="noreferrer">{finding.title}<Icon name="external" size={12} /></a><span>{finding.publishedAt} · {finding.arxivId}</span></div>
                   <p className="why-relevant"><strong>Why this matters</strong>{finding.whyRelevant}</p>
-                  <div className="finding-actions">
-                    <button className="primary-action" onClick={() => selectFinding(finding.id)}>View evidence</button>
-                    <button onClick={() => selectFinding(finding.id, true)}><Icon name="search" size={15} />Investigate</button>
-                    <button className={status === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(finding.id, status === 'saved' ? 'new' : 'saved')}><Icon name="bookmark" size={15} />{status === 'saved' ? 'Saved' : 'Save'}</button>
-                    <button onClick={() => updateFindingStatus(finding.id, status === 'dismissed' ? 'new' : 'dismissed')}><Icon name="close" size={15} />{status === 'dismissed' ? 'Restore' : 'Dismiss'}</button>
-                    <a href={githubIssueUrl(finding)} target="_blank" rel="noreferrer"><Icon name="github" size={15} />Create GitHub issue</a>
+                  <div className="finding-footer">
+                    <a className="affected-file" href={sourceUrl(finding)} target="_blank" rel="noreferrer"><Icon name="code" size={14} /><code>{finding.code.path}</code><Icon name="external" size={12} /></a>
+                    <div className="finding-actions">
+                      <button className="primary-action" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)}>{expanded ? 'Hide evidence' : 'View evidence'}</button>
+                      <button className={status === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(finding.id, status === 'saved' ? 'new' : 'saved')}><Icon name="bookmark" size={15} />{status === 'saved' ? 'Saved' : 'Save'}</button>
+                      <button onClick={() => updateFindingStatus(finding.id, status === 'dismissed' ? 'new' : 'dismissed')}><Icon name="close" size={15} />{status === 'dismissed' ? 'Restore' : 'Dismiss'}</button>
+                    </div>
                   </div>
                 </div>
+
+                {expanded && <div className="finding-detail" id={`finding-detail-${finding.id}`}>
+                  <header className="detail-intro"><div><p className="eyebrow">Supporting evidence</p><h3>{finding.title}</h3><p>{finding.authors} · {finding.publishedAt} · {finding.arxivId}</p></div><button className="detail-close" onClick={() => setDetailOpen(false)} aria-label="Close evidence"><Icon name="close" size={17} /></button></header>
+                  <div className="detail-grid">
+                    <section className="detail-section detail-code wide"><div className="section-heading"><h3>Affected implementation</h3><a href={sourceUrl(finding)} target="_blank" rel="noreferrer"><code>{finding.code.path}</code><Icon name="external" size={12} /></a></div><pre>{finding.code.lines.map((line, index) => <span key={`${line}-${index}`}><b>{index + 1}</b>{line}</span>)}</pre></section>
+                    <section className="detail-section"><div className="section-heading"><h3>Reasoning</h3><span>Possible application</span></div><p>{finding.whyRelevant}</p></section>
+                    <section className="detail-section"><h3>What the paper reports</h3><p>{finding.summary}</p></section>
+                    <section className="detail-section source-evidence wide"><h3>Source evidence</h3><blockquote>{finding.evidence}</blockquote><p>{finding.evidenceContext}</p><a href={finding.paperUrl} target="_blank" rel="noreferrer">Verify in {finding.arxivId}<Icon name="external" size={12} /></a></section>
+                    <section className="detail-section experiment wide"><div className="section-heading"><h3>Suggested experiment</h3><span>Needs verification</span></div><p>{finding.suggestedAction}</p></section>
+                    <section className="detail-section investigate-section wide">
+                      <div className="section-heading"><h3>Investigate with repository context</h3><span>Prepared demo</span></div>
+                      <p>Ask about the cited claim and affected code. Answers are constrained to the evidence shown above.</p>
+                      {(investigating || answer) && <form onSubmit={askQuestion}><label htmlFor={`investigation-question-${finding.id}`}>Question</label><textarea id={`investigation-question-${finding.id}`} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={`How does this apply to ${finding.code.path}?`} rows={3} /><button type="submit" disabled={!question.trim()}>Ask with evidence</button></form>}
+                      {!investigating && !answer && <button className="investigate-button" onClick={() => setInvestigating(true)}><Icon name="search" size={15} />Start investigation</button>}
+                      {answer && <div className="investigation-answer" role="status"><strong>Evidence-guided response</strong><p>{answer}</p><small>Prepared from the cited abstract claim and repository excerpt; no full paper or code execution was used.</small></div>}
+                    </section>
+                  </div>
+                  <footer className="detail-actions"><a href={finding.paperUrl} target="_blank" rel="noreferrer">Open paper <Icon name="external" size={14} /></a><a href={githubIssueUrl(finding)} target="_blank" rel="noreferrer"><Icon name="github" size={15} />Create issue draft</a></footer>
+                </div>}
               </article>
             }) : <div className="empty-state"><Icon name="search" size={24} /><h2>No findings match these filters</h2><p>Dismissed findings remain recoverable through the status filter.</p><button onClick={clearFilters}>Clear filters</button></div>}
-          </div>
-        </section>
-
-        <aside className="detail-pane" aria-label="Finding evidence">
-          <div className="detail-mobile-header"><button onClick={() => setDetailOpen(false)}><Icon name="arrow" size={16} />Back to discoveries</button><button className="icon-button" onClick={() => setDetailOpen(false)} aria-label="Close evidence"><Icon name="close" /></button></div>
-          <div className="detail-scroll">
-            <header className="detail-header"><div className="finding-heading"><span className="finding-type">{selected.type}</span><span className={`priority priority-${selected.priority.toLowerCase()}`}>{selected.priority} priority</span></div><h2>{selected.insight}</h2><p>{selected.title}</p><div className="detail-links"><a href={selected.paperUrl} target="_blank" rel="noreferrer">Open paper <Icon name="external" size={14} /></a><a href={sourceUrl(selected)} target="_blank" rel="noreferrer">Open code <Icon name="external" size={14} /></a></div></header>
-
-            <section className="detail-code"><div className="section-heading"><h3>Affected implementation</h3><a href={sourceUrl(selected)} target="_blank" rel="noreferrer"><code>{selected.code.path}</code><Icon name="external" size={12} /></a></div><pre>{selected.code.lines.map((line, index) => <span key={`${line}-${index}`}><b>{index + 1}</b>{line}</span>)}</pre></section>
-            <section><div className="section-heading"><h3>Reasoning</h3><span>Possible application</span></div><p>{selected.whyRelevant}</p></section>
-            <section className="source-evidence"><h3>Source evidence</h3><blockquote>{selected.evidence}</blockquote><p>{selected.evidenceContext}</p><a href={selected.paperUrl} target="_blank" rel="noreferrer">Verify in {selected.arxivId}<Icon name="external" size={12} /></a></section>
-            <section><h3>What the paper reports</h3><p>{selected.summary}</p></section>
-            <section className="experiment"><div className="section-heading"><h3>Suggested experiment</h3><span>Needs verification</span></div><p>{selected.suggestedAction}</p></section>
-
-            <section className="investigate-section">
-              <div className="section-heading"><h3>Investigate with repository context</h3><span>Prepared demo</span></div>
-              <p>Ask about the cited claim and affected code. Answers are constrained to the evidence shown above.</p>
-              {(investigating || answer) && <form onSubmit={askQuestion}><label htmlFor="investigation-question">Question</label><textarea id="investigation-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={`How does this apply to ${selected.code.path}?`} rows={3} /><button type="submit" disabled={!question.trim()}>Ask with evidence</button></form>}
-              {!investigating && !answer && <button className="investigate-button" onClick={() => setInvestigating(true)}><Icon name="search" size={15} />Start investigation</button>}
-              {answer && <div className="investigation-answer" role="status"><strong>Evidence-guided response</strong><p>{answer}</p><small>Prepared from the cited abstract claim and repository excerpt; no full paper or code execution was used.</small></div>}
-            </section>
-
-            <section className="detail-actions"><button className={statuses[selected.id] === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(selected.id, statuses[selected.id] === 'saved' ? 'new' : 'saved')}><Icon name="bookmark" size={15} />{statuses[selected.id] === 'saved' ? 'Saved' : 'Save'}</button><button onClick={() => updateFindingStatus(selected.id, 'dismissed')}><Icon name="close" size={15} />Dismiss</button><a href={githubIssueUrl(selected)} target="_blank" rel="noreferrer"><Icon name="github" size={15} />Create issue draft</a></section>
-          </div>
-        </aside>
+          </section>
+        </div>
       </main>}
 
       {page === 'repositories' && <main className="content-page repositories-page">

@@ -42,6 +42,11 @@ const repository = {
 } as const
 const repositoryName = `${repository.owner}/${repository.repo}`
 const repositoryUrl = `https://github.com/${repositoryName}`
+const pagePaths: Record<Page, string> = {
+  overview: '/',
+  discoveries: '/discoveries',
+  repositories: '/repositories',
+}
 const DEFAULT_SIMULATION_NOTICE = 'Paper metadata is fetched live from arXiv. Repository analysis, relevance scoring, and GitHub issue creation are simulated.'
 const MAX_SCAN_POLLS = 10
 
@@ -104,8 +109,13 @@ function errorMessage(error: unknown) {
   return 'The bot API request failed.'
 }
 
+function pageFromPath(pathname: string): Page {
+  const normalisedPath = pathname.replace(/\/+$/, '') || '/'
+  return (Object.entries(pagePaths).find(([, path]) => path === normalisedPath)?.[0] as Page | undefined) ?? 'overview'
+}
+
 function Application() {
-  const [page, setPage] = useState<Page>('overview')
+  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname))
   const [findings, setFindings] = useState<Finding[]>([])
   const [findingsLoading, setFindingsLoading] = useState(true)
   const [apiError, setApiError] = useState<string | null>(null)
@@ -169,6 +179,18 @@ function Application() {
     }
   }, [])
 
+  useEffect(() => {
+    function syncPageFromUrl() {
+      const nextPage = pageFromPath(window.location.pathname)
+      setPage(nextPage)
+      setMobileNavOpen(false)
+      if (nextPage !== 'discoveries') setDetailOpen(false)
+    }
+
+    window.addEventListener('popstate', syncPageFromUrl)
+    return () => window.removeEventListener('popstate', syncPageFromUrl)
+  }, [])
+
   const visibleFindings = useMemo(() => {
     const normalisedQuery = query.trim().toLowerCase()
     return findings.filter((finding) => {
@@ -196,6 +218,9 @@ function Application() {
   }
 
   function navigate(nextPage: Page) {
+    if (window.location.pathname !== pagePaths[nextPage]) {
+      window.history.pushState(null, '', pagePaths[nextPage])
+    }
     setPage(nextPage)
     setMobileNavOpen(false)
     if (nextPage !== 'discoveries') setDetailOpen(false)
@@ -203,7 +228,7 @@ function Application() {
 
   function selectFinding(id: string) {
     setSelectedId(id)
-    setPage('discoveries')
+    navigate('discoveries')
     setDetailOpen(true)
   }
 

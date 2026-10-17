@@ -1,23 +1,3 @@
-:root,
-[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #0d1117;
-  --surface: #151b23;
-  --surface-raised: #1b2330;
-  --surface-hover: #222d3b;
-  --border: #303b4a;
-  --border-subtle: #25303d;
-  --text: #e6edf3;
-  --text-secondary: #a8b3c2;
-  --text-muted: #8592a3;
-  --accent: #83d5b2;
-  --accent-hover: #a2e6c8;
-  --accent-surface: #18352e;
-  --accent-text: #0d211b;
-  --link: #8cbffa;
-  --warning: #f2c879;
-  --focus: #a2e6c8;
-}
 
 .application {
   min-height: 100vh;
@@ -177,7 +157,7 @@
 .finding-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
 .finding-type { color: var(--text-secondary); font-size: 12px; font-weight: 650; }
 .strength { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-secondary); font-size: 11px; }
-.strength.strong { border-color: #2e5b4d; color: var(--accent); background: var(--accent-surface); }
+.strength.strong { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); color: var(--success); background: var(--accent-surface); }
 .finding-row h2 { max-width: 780px; margin: 0; font-size: 16px; line-height: 1.4; letter-spacing: -0.01em; }
 .paper-meta { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
 .paper-meta span { font-family: 'JetBrains Mono', ui-monospace, monospace; }
@@ -202,7 +182,7 @@
 .detail-pane section h3 { margin: 0 0 9px; font-size: 14px; }
 .detail-pane section p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.65; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.section-heading span { flex: none; padding: 2px 6px; border: 1px solid #5d4e2b; border-radius: 4px; color: var(--warning); font-size: 10px; }
+.section-heading span { flex: none; padding: 2px 6px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: 4px; color: var(--warning); font-size: 10px; }
 .detail-pane dl { margin: 0; }
 .detail-pane dl > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); }
 .detail-pane dl > div:last-child { border-bottom: 0; }
@@ -220,7 +200,7 @@
   .application { grid-template-columns: 220px minmax(0, 1fr); }
   .workspace { position: relative; display: block; }
   .finding-pane { height: 100%; border-right: 0; }
-  .detail-pane { position: absolute; z-index: 20; inset: 0 0 0 auto; width: min(440px, 100%); visibility: hidden; pointer-events: none; border-left: 1px solid var(--border); box-shadow: -24px 0 70px rgb(0 0 0 / 0.25); transform: translateX(100%); transition: transform 180ms ease-out, visibility 180ms; }
+  .detail-pane { position: absolute; z-index: 20; inset: 0 0 0 auto; width: min(440px, 100%); visibility: hidden; pointer-events: none; border-left: 1px solid var(--border); box-shadow: -24px 0 70px var(--drawer-shadow); transform: translateX(100%); transition: transform 180ms ease-out, visibility 180ms; }
   .detail-is-open .detail-pane { visibility: visible; pointer-events: auto; transform: translateX(0); }
   .detail-scroll { height: calc(100% - 49px); }
   .detail-mobile-header { min-height: 49px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 18px; border-bottom: 1px solid var(--border-subtle); }
@@ -232,7 +212,7 @@
   .application { display: block; height: 100vh; padding-top: 64px; }
   .sidebar { position: fixed; z-index: 50; inset: 0 auto 0 0; width: min(280px, 86vw); visibility: hidden; pointer-events: none; transform: translateX(-100%); transition: transform 180ms ease-out, visibility 180ms; }
   .nav-is-open .sidebar { visibility: visible; pointer-events: auto; transform: translateX(0); }
-  .nav-is-open .nav-scrim { position: fixed; z-index: 40; inset: 0; display: block; border: 0; background: rgb(0 0 0 / 0.62); }
+  .nav-is-open .nav-scrim { position: fixed; z-index: 40; inset: 0; display: block; border: 0; background: var(--scrim); }
   .topbar { position: fixed; z-index: 30; inset: 0 0 auto; height: 64px; padding: 0 12px; }
   .menu-button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; color: var(--text); background: transparent; cursor: pointer; }
   .mobile-brand { display: block; font-size: 16px; font-weight: 700; letter-spacing: -0.03em; }

@@ -291,7 +291,7 @@ button { color: inherit; }
 .detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; padding-top: 18px; }
 .nav-scrim { display: none; }
 
-.settings-layout { max-width: 1120px; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr); gap: 40px; margin: 28px auto 0; align-items: start; }
+.settings-layout { max-width: 1120px; display: grid; grid-template-columns: 1fr; gap: 48px; margin: 28px auto 0; align-items: start; }
 .repository-list-panel .panel-heading > span { min-width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 2px; color: var(--text-secondary); font: 600 11px var(--font-mono); }
 .repository-list { padding: 0; }
 .repository-list article { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }
@@ -330,7 +330,7 @@ button { color: inherit; }
 .checkbox-row strong { font: 600 11px 'JetBrains Mono', ui-monospace, monospace; }
 .publishing-control { padding: 18px 0; }
 .publishing-control strong { font-family: inherit; font-size: 12px; }
-.monitoring-panel { padding-left: 40px; border-left: 1px solid var(--border); }
+.monitoring-panel { padding-top: 36px; border-top: 1px solid var(--border); }
 .monitoring-panel footer { display: flex; justify-content: flex-end; padding: 16px 0; border-top: 1px solid var(--border); }
 
 .toast { position: fixed; z-index: 100; right: 24px; bottom: 24px; max-width: min(420px, calc(100vw - 32px)); min-height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 8px 0 13px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--surface-raised); box-shadow: 0 12px 36px var(--drawer-shadow); font-size: 12px; }

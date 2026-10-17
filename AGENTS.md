@@ -1,6 +1,6 @@
 # AGENTS.md — Hackathon Team Instructions
 
-This file applies to every AI coding agent working in this repository. We are **four human teammates, each using a separate AI agent**. Agents do not share context, memory, or uncommitted work. Treat the repository and explicit messages from teammates as the source of truth.
+This file applies to every AI coding agent working in this repository. We are **three human teammates, each using a separate AI agent**. Agents do not share context, memory, or uncommitted work. Treat the repository and explicit messages from teammates as the source of truth.
 
 ## Mission
 

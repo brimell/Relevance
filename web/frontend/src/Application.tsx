@@ -1,366 +1,257 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import './application.css'
 
 type IconName =
-  | 'archive'
+  | 'activity'
   | 'arrow'
   | 'check'
   | 'chevron'
   | 'close'
   | 'code'
-  | 'copy'
-  | 'document'
+  | 'comment'
   | 'github'
+  | 'issue'
   | 'menu'
-  | 'new'
-  | 'panel'
-  | 'paperclip'
+  | 'plus'
   | 'search'
-  | 'send'
   | 'settings'
   | 'spark'
+  | 'tag'
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
-  const paths: Record<IconName, ReactNode> = {
-    archive: <><path d="M4 7.5h16v12H4z" /><path d="M3 4.5h18v3H3zM9 11h6" /></>,
+  const paths: Record<IconName, React.ReactNode> = {
+    activity: <><path d="M3 12h3l2-7 4 14 2-7h7" /></>,
     arrow: <><path d="M5 12h14M14 7l5 5-5 5" /></>,
-    check: <path d="m5 12 4 4L19 6" />,
-    chevron: <path d="m8 10 4 4 4-4" />,
-    close: <path d="m6 6 12 12M18 6 6 18" />,
+    check: <><path d="m5 12 4 4L19 6" /></>,
+    chevron: <><path d="m8 10 4 4 4-4" /></>,
+    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     code: <><path d="m9 18-6-6 6-6M15 6l6 6-6 6" /></>,
-    copy: <><rect x="8" y="8" width="11" height="11" /><path d="M16 8V5H5v11h3" /></>,
-    document: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h4M9 12h6M9 16h6" /></>,
-    github: <path d="M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.65-.2.65-.46v-1.82c-2.62.57-3.18-1.12-3.18-1.12-.43-1.1-1.05-1.39-1.05-1.39-.86-.59.07-.58.07-.58.95.07 1.46.98 1.46.98.84 1.46 2.22 1.03 2.76.79.08-.62.33-1.04.6-1.28-2.1-.24-4.3-1.05-4.3-4.69 0-1.03.37-1.88.98-2.55-.1-.24-.43-1.2.09-2.52 0 0 .8-.25 2.6.98a8.95 8.95 0 0 1 4.72 0c1.8-1.23 2.59-.98 2.59-.98.52 1.32.19 2.28.09 2.52.61.67.98 1.52.98 2.55 0 3.64-2.21 4.44-4.31 4.68.34.29.64.87.64 1.77v2.61c0 .26.17.56.65.46A9.5 9.5 0 0 0 12 2.5Z" />,
-    menu: <path d="M4 7h16M4 12h16M4 17h16" />,
-    new: <path d="M12 5v14M5 12h14" />,
-    panel: <><rect x="3" y="4" width="18" height="16" /><path d="M15 4v16" /></>,
-    paperclip: <path d="m8.5 12.5 5.8-5.8a3 3 0 0 1 4.2 4.2l-7.2 7.2a5 5 0 0 1-7.1-7.1l7.1-7.1" />,
-    search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>,
-    send: <><path d="m4 4 17 8-17 8 3-8z" /><path d="M7 12h14" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.6a7 7 0 0 0-.7-1.7l1-1.9-2.1-2.1-1.9 1a7 7 0 0 0-1.7-.7L11 2.5H8l-.6 2a7 7 0 0 0-1.7.7l-1.9-1-2.1 2.1 1 1.9a7 7 0 0 0-.7 1.7l-2 .6v3l2 .6a7 7 0 0 0 .7 1.7l-1 1.9 2.1 2.1 1.9-1a7 7 0 0 0 1.7.7l.6 2h3l.6-2a7 7 0 0 0 1.7-.7l1.9 1 2.1-2.1-1-1.9a7 7 0 0 0 .7-1.7z" transform="translate(1.5) scale(.87)" /></>,
-    spark: <path d="M12 2.5c.6 5.4 3.1 8 8 8.5-4.9.5-7.4 3.1-8 8.5-.6-5.4-3.1-8-8-8.5 4.9-.5 7.4-3.1 8-8.5Z" />,
+    comment: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></>,
+    github: <><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.36-1.18-3.36-1.18-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.54 9.54 0 0 1 5 0c1.9-1.29 2.74-1.02 2.74-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.56 4.93.36.31.68.92.68 1.86V21c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" /></>,
+    issue: <><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></>,
+    menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
+    plus: <><path d="M12 5v14M5 12h14" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.09A1.7 1.7 0 0 0 4.2 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.55 4.2a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V2.4h4v.09A1.7 1.7 0 0 0 15 4.2a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.55c.38.28.82.42 1.29.42h.09v4h-.09A1.7 1.7 0 0 0 19.4 15Z" /></>,
+    spark: <><path d="m12 3 1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4ZM18.5 15l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7Z" /></>,
+    tag: <><path d="M20 13 13 20l-9-9V4h7Z" /><path d="M8.5 8.5h.01" /></>,
   }
-
-  return <svg className="ui-icon" aria-hidden="true" width={size} height={size} viewBox="0 0 24 24">{paths[name]}</svg>
+  return <svg className="ui-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
 
-type Conversation = {
+type Status = 'open' | 'resolved'
+type Label = 'research' | 'performance' | 'security' | 'architecture' | 'discussion'
+
+type Issue = {
   id: number
   title: string
-  date: string
-  preview: string
+  summary: string
+  body: string
+  author: string
+  avatar: string
+  status: Status
+  labels: Label[]
+  comments: number
+  votes: number
+  time: string
+  file?: string
+  confidence?: number
 }
 
-type Message = {
-  id: number
-  role: 'user' | 'assistant'
-  content: string
-}
-
-const initialConversations: Conversation[] = [
-  { id: 1, title: 'Improve retrieval accuracy', date: 'Today', preview: 'Compare our chunking approach…' },
-  { id: 2, title: 'Recent work on reranking', date: 'Yesterday', preview: 'Research connected to eval.ts' },
-  { id: 3, title: 'Evaluate GraphRAG', date: '12 Oct', preview: 'Trade-offs for our current graph…' },
-  { id: 4, title: 'Embedding model options', date: '9 Oct', preview: 'A review of three recent models' },
+const initialIssues: Issue[] = [
+  {
+    id: 42,
+    title: 'Adaptive chunking could improve retrieval quality',
+    summary: 'A new paper maps directly to the fixed-size segmentation in our retrieval pipeline.',
+    body: 'The current retriever splits every document at 512 tokens, including code blocks and section boundaries. Recent work on context-aware segmentation reports stronger retrieval performance while preserving semantic structure.',
+    author: 'relevance[bot]', avatar: 'R', status: 'open', labels: ['research', 'performance'], comments: 8, votes: 24, time: '12 min ago', file: 'src/retrieval/chunk.ts:48', confidence: 92,
+  },
+  {
+    id: 41,
+    title: 'Evaluate prompt injection defenses for indexed documents',
+    summary: 'Untrusted repository content currently enters the context window without a trust boundary.',
+    body: 'The indexing pipeline treats documentation and issue content as trusted instructions. This discussion tracks options for separating data from instructions before expanding repository ingestion.',
+    author: 'Maya Chen', avatar: 'MC', status: 'open', labels: ['security', 'discussion'], comments: 12, votes: 31, time: '1 hr ago', file: 'src/context/build.ts:112', confidence: 88,
+  },
+  {
+    id: 39,
+    title: 'Cache paper embeddings between scheduled scans',
+    summary: 'Repeated embedding work is the largest cost in the nightly research scan.',
+    body: 'Paper embeddings only need to change when the source abstract changes. We should persist them by arXiv identifier and content hash, then only embed new or revised records.',
+    author: 'Noah Williams', avatar: 'NW', status: 'open', labels: ['performance', 'architecture'], comments: 5, votes: 17, time: 'Yesterday', file: 'src/matching/embed.ts:27', confidence: 84,
+  },
+  {
+    id: 38,
+    title: 'Show evidence quality separately from match confidence',
+    summary: 'A strong semantic match does not always mean the underlying claim is well supported.',
+    body: 'The finding card currently combines relevance and evidence into one score. Splitting those measures will make uncertainty clearer and help reviewers prioritize what needs verification.',
+    author: 'Afonso F.', avatar: 'AF', status: 'open', labels: ['discussion', 'research'], comments: 9, votes: 28, time: '2 days ago', confidence: 78,
+  },
+  {
+    id: 35,
+    title: 'Add repository language detection to project profiles',
+    summary: 'Language-aware profiles now improve source selection and paper matching.',
+    body: 'Implemented language detection using repository metadata and file extensions. The top languages are included in project profiles and used during candidate ranking.',
+    author: 'relevance[bot]', avatar: 'R', status: 'resolved', labels: ['architecture'], comments: 3, votes: 11, time: '4 days ago', file: 'src/profile/languages.ts', confidence: 96,
+  },
 ]
 
-const starterPrompts = [
-  'What new research could improve our retrieval quality?',
-  'Find assumptions in this repository that recent work challenges.',
-  'Compare our evaluation setup with current best practice.',
-]
-
-function EvidenceBlock({ onOpenSource }: { onOpenSource: (source: string) => void }) {
-  return (
-    <div className="evidence-block">
-      <div className="evidence-heading">
-        <span>Strongest connection</span>
-        <span className="confidence">HIGH CONFIDENCE</span>
-      </div>
-      <h3>Structure-aware chunking may improve retrieval quality</h3>
-      <p>
-        Your pipeline splits documents at a fixed 512-token boundary. That can separate headings from their content and break code blocks midway through a function. A recent evaluation found that chunking around semantic structure improved retrieval on mixed technical documents.
-      </p>
-      <div className="comparison">
-        <div>
-          <span>YOUR IMPLEMENTATION</span>
-          <button onClick={() => onOpenSource('chunk.ts')}><Icon name="code" size={15} /> src/retrieval/chunk.ts:48</button>
-          <code>splitByTokens(document, 512)</code>
-        </div>
-        <div>
-          <span>RESEARCH DIRECTION</span>
-          <button onClick={() => onOpenSource('paper')}><Icon name="document" size={15} /> Chen et al. · 2026</button>
-          <p>Preserve section and code boundaries before applying the token limit.</p>
-        </div>
-      </div>
-      <div className="recommendation">
-        <span>Suggested experiment</span>
-        <p>Run both chunkers against the existing 240-query evaluation set. Compare recall@10 and inspect failures on documents containing code.</p>
-      </div>
-    </div>
-  )
+const labelNames: Record<Label, string> = {
+  research: 'Research', performance: 'Performance', security: 'Security', architecture: 'Architecture', discussion: 'Discussion',
 }
 
 function Application() {
-  const [conversations, setConversations] = useState(initialConversations)
-  const [activeConversation, setActiveConversation] = useState(1)
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 1, role: 'user', content: 'What new research could improve our retrieval quality? Focus on changes we can test this week.' },
-    { id: 2, role: 'assistant', content: 'I compared the retrieval pipeline, evaluation scripts, and current dependencies against 186 papers published in the last 90 days. One connection is strong enough to test now; two others need more evidence.' },
-  ])
-  const [draft, setDraft] = useState('')
-  const [isThinking, setIsThinking] = useState(false)
+  const [issues, setIssues] = useState(initialIssues)
+  const [selectedId, setSelectedId] = useState(42)
+  const [status, setStatus] = useState<'all' | Status>('open')
+  const [activeLabel, setActiveLabel] = useState<Label | null>(null)
+  const [query, setQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [contextOpen, setContextOpen] = useState(true)
-  const [activeSource, setActiveSource] = useState('chunk.ts')
-  const [copied, setCopied] = useState(false)
-  const endRef = useRef<HTMLDivElement>(null)
-  const scrollRequested = useRef(false)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [newIssueOpen, setNewIssueOpen] = useState(false)
+  const [comment, setComment] = useState('')
+  const [commentPosted, setCommentPosted] = useState(false)
 
-  const conversation = conversations.find((item) => item.id === activeConversation)
+  const filteredIssues = useMemo(() => issues.filter((issue) => {
+    const matchesStatus = status === 'all' || issue.status === status
+    const matchesLabel = !activeLabel || issue.labels.includes(activeLabel)
+    const text = `${issue.title} ${issue.summary}`.toLowerCase()
+    return matchesStatus && matchesLabel && text.includes(query.toLowerCase())
+  }), [issues, status, activeLabel, query])
 
-  useEffect(() => {
-    if (scrollRequested.current) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, isThinking])
+  const selected = issues.find((issue) => issue.id === selectedId) ?? filteredIssues[0]
+  const openCount = issues.filter((issue) => issue.status === 'open').length
+  const resolvedCount = issues.filter((issue) => issue.status === 'resolved').length
 
-  useEffect(() => {
-    const compactViewport = window.matchMedia('(max-width: 930px)')
-    const closeContextOnCompact = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) setContextOpen(false)
-    }
-    closeContextOnCompact(compactViewport)
-    compactViewport.addEventListener('change', closeContextOnCompact)
-    return () => compactViewport.removeEventListener('change', closeContextOnCompact)
-  }, [])
-
-  function startNewAnalysis(prompt = '') {
-    const nextId = Math.max(...conversations.map((item) => item.id), 0) + 1
-    const title = prompt ? prompt.replace(/[?.]/g, '').slice(0, 42) : 'New research question'
-    setConversations((items) => [{ id: nextId, title, date: 'Now', preview: 'No messages yet' }, ...items])
-    setActiveConversation(nextId)
-    setMessages([])
-    setDraft(prompt)
-    setSidebarOpen(false)
-    setContextOpen(false)
-    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus())
+  function selectIssue(id: number) {
+    setSelectedId(id)
+    setDetailOpen(true)
   }
 
-  function chooseConversation(id: number) {
-    setActiveConversation(id)
-    setSidebarOpen(false)
-    if (id === 1) {
-      setMessages([
-        { id: 1, role: 'user', content: 'What new research could improve our retrieval quality? Focus on changes we can test this week.' },
-        { id: 2, role: 'assistant', content: 'I compared the retrieval pipeline, evaluation scripts, and current dependencies against 186 papers published in the last 90 days. One connection is strong enough to test now; two others need more evidence.' },
-      ])
-    } else {
-      setMessages([
-        { id: 1, role: 'user', content: conversations.find((item) => item.id === id)?.title ?? 'Research this repository' },
-        { id: 2, role: 'assistant', content: 'This is a saved analysis thread. Connect the research service to restore its full evidence and citations.' },
-      ])
-    }
+  function createIssue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const title = String(data.get('title') || '').trim()
+    const body = String(data.get('body') || '').trim()
+    if (!title || !body) return
+    const id = Math.max(...issues.map((issue) => issue.id)) + 1
+    setIssues((current) => [{ id, title, summary: body, body, author: 'You', avatar: 'YO', status: 'open', labels: ['discussion'], comments: 0, votes: 1, time: 'Just now' }, ...current])
+    setSelectedId(id)
+    setStatus('open')
+    setActiveLabel(null)
+    setNewIssueOpen(false)
+    setDetailOpen(true)
   }
 
-  function sendMessage(event?: FormEvent) {
-    event?.preventDefault()
-    const message = draft.trim()
-    if (!message || isThinking) return
-    const userMessage: Message = { id: Date.now(), role: 'user', content: message }
-    scrollRequested.current = true
-    setMessages((items) => [...items, userMessage])
-    setConversations((items) => items.map((item) => item.id === activeConversation ? { ...item, title: item.preview === 'No messages yet' ? message.slice(0, 42) : item.title, preview: message.slice(0, 54) } : item))
-    setDraft('')
-    setIsThinking(true)
-    window.setTimeout(() => {
-      setMessages((items) => [...items, {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: 'I have the question and repository scope. This scaffold is ready to pass it to the research service; once connected, the response will stream here with file references and paper citations.',
-      }])
-      setIsThinking(false)
-    }, 900)
-  }
-
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      sendMessage()
-    }
-  }
-
-  function openSource(source: string) {
-    setActiveSource(source)
-    setContextOpen(true)
-  }
-
-  async function copyAnswer() {
-    await navigator.clipboard?.writeText('Structure-aware chunking may improve retrieval quality. Test semantic boundaries against the current 512-token chunker using recall@10.')
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
+  function postComment(event: FormEvent) {
+    event.preventDefault()
+    if (!comment.trim() || !selected) return
+    setIssues((current) => current.map((issue) => issue.id === selected.id ? { ...issue, comments: issue.comments + 1 } : issue))
+    setComment('')
+    setCommentPosted(true)
   }
 
   return (
-    <div className={`application ${sidebarOpen ? 'sidebar-is-open' : ''} ${contextOpen ? '' : 'context-is-closed'}`}>
+    <div className={`application ${sidebarOpen ? 'sidebar-is-open' : ''} ${detailOpen ? 'detail-is-open' : ''}`}>
       <header className="app-topbar">
-        <div className="topbar-leading">
-          <button className="icon-button mobile-menu" aria-label="Open conversations" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button>
-          <a className="app-wordmark" href="/" aria-label="Relevance home">RLV<span>.</span></a>
-          <div className="repo-switcher">
-            <Icon name="github" size={16} />
-            <span>acme / rag-engine</span>
-            <Icon name="chevron" size={14} />
-          </div>
+        <div className="topbar-brand">
+          <button className="mobile-icon" onClick={() => setSidebarOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
+          <a className="app-wordmark" href="/">RLV<span>.</span></a>
+          <div className="topbar-divider" />
+          <button className="repo-switcher"><Icon name="github" /><strong>acme / rag-engine</strong><Icon name="chevron" size={15} /></button>
         </div>
         <div className="topbar-actions">
-          <span className="scan-status"><Icon name="check" size={14} /> Indexed 14 Oct</span>
-          <button className="scan-button"><Icon name="spark" size={16} /> Scan repository</button>
+          <div className="scan-pill"><span /><span className="scan-copy">Last scan completed · 12m</span></div>
           <button className="icon-button" aria-label="Settings"><Icon name="settings" /></button>
-          <button className="avatar-button" aria-label="Account menu">BR</button>
+          <button className="avatar-button">BR</button>
         </div>
       </header>
 
-      {sidebarOpen && <button className="app-scrim" aria-label="Close conversations" onClick={() => setSidebarOpen(false)} />}
-
-      <aside className="conversation-sidebar" aria-label="Research conversations">
-        <div className="sidebar-mobile-heading">
-          <span>Conversations</span>
-          <button className="icon-button" aria-label="Close conversations" onClick={() => setSidebarOpen(false)}><Icon name="close" /></button>
-        </div>
-        <button className="new-analysis" onClick={() => startNewAnalysis()}><Icon name="new" size={17} /> New analysis</button>
-        <button className="sidebar-search"><Icon name="search" size={16} /><span>Search conversations</span><kbd>⌘ K</kbd></button>
-
-        <div className="conversation-list">
-          <span className="sidebar-label">Conversations</span>
-          {conversations.map((item) => (
-            <button key={item.id} className={item.id === activeConversation ? 'conversation-item active' : 'conversation-item'} onClick={() => chooseConversation(item.id)}>
-              <span>{item.title}</span>
-              <small>{item.date}</small>
-              <p>{item.preview}</p>
+      <aside className="app-sidebar">
+        <div className="sidebar-mobile-head"><a className="app-wordmark" href="/">RLV<span>.</span></a><button className="icon-button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation"><Icon name="close" /></button></div>
+        <nav className="main-nav" aria-label="Application navigation">
+          <span className="nav-heading">Workspace</span>
+          <button className="active"><Icon name="issue" /><span>Issues</span><em>{openCount}</em></button>
+          <button><Icon name="activity" /><span>Scan activity</span></button>
+          <button><Icon name="code" /><span>Project profile</span></button>
+          <button><Icon name="tag" /><span>Research topics</span></button>
+        </nav>
+        <div className="sidebar-section">
+          <div className="sidebar-section-title"><span>Labels</span><button aria-label="Add label"><Icon name="plus" size={15} /></button></div>
+          {(Object.keys(labelNames) as Label[]).map((label) => (
+            <button className={`label-filter ${activeLabel === label ? 'active' : ''}`} key={label} onClick={() => setActiveLabel(activeLabel === label ? null : label)}>
+              <i className={`label-dot ${label}`} />{labelNames[label]}
+              <span>{issues.filter((issue) => issue.labels.includes(label)).length}</span>
             </button>
           ))}
         </div>
-        <div className="sidebar-footer">
-          <div><span>Repository scope</span><strong>1,248 files</strong></div>
-          <div><span>Research index</span><strong>Updated daily</strong></div>
-          <a href="/"><Icon name="arrow" size={16} /> Back to website</a>
+        <div className="sidebar-card">
+          <div className="bot-mark"><Icon name="spark" /></div>
+          <div><strong>Research monitor</strong><p>Watching 8 topics across 3 feeds.</p></div>
+          <button>Configure <Icon name="arrow" size={14} /></button>
         </div>
       </aside>
 
-      <main className="chat-workspace">
-        <header className="chat-header">
-          <div>
-            <span className="mobile-repo">acme / rag-engine</span>
-            <h1>{conversation?.title ?? 'New analysis'}</h1>
-            <p>{activeConversation === 1 ? 'Repository research · 3 sources' : messages.length === 0 ? 'Repository research · Ready' : 'Repository research · Context attached'}</p>
-          </div>
-          <div className="chat-header-actions">
-            <button className={contextOpen ? 'icon-button active' : 'icon-button'} aria-label="Toggle evidence panel" onClick={() => setContextOpen((open) => !open)}><Icon name="panel" /></button>
-            <button className="icon-button" aria-label="Archive conversation"><Icon name="archive" /></button>
-          </div>
-        </header>
+      <main className="issues-workspace">
+        <section className="issues-list-pane">
+          <header className="issues-header">
+            <div><p className="overline">Repository workspace</p><h1>Issues</h1><p>Research findings and team discussions.</p></div>
+            <button className="primary-button" onClick={() => setNewIssueOpen(true)}><Icon name="plus" size={17} /> New issue</button>
+          </header>
 
-        <div className="message-scroll">
-          <div className="message-column">
-            {messages.length === 0 ? (
-              <section className="empty-state">
-                <div className="empty-mark">R</div>
-                <span>Ask Relevance</span>
-                <h1>What should we investigate?</h1>
-                <p>Ask about an implementation decision, a technical constraint, or recent research connected to this repository.</p>
-                <div className="starter-prompts">
-                  {starterPrompts.map((prompt) => <button key={prompt} onClick={() => setDraft(prompt)}>{prompt}<Icon name="arrow" size={16} /></button>)}
-                </div>
-              </section>
-            ) : (
-              messages.map((message, index) => (
-                <article className={`message ${message.role}`} key={message.id}>
-                  <div className="message-author">{message.role === 'assistant' ? <span className="relevance-avatar">R</span> : <span className="user-avatar">BR</span>}</div>
-                  <div className="message-content">
-                    <div className="message-meta"><strong>{message.role === 'assistant' ? 'Relevance' : 'You'}</strong><span>{index < 2 ? '10:42' : 'Now'}</span></div>
-                    <p>{message.content}</p>
-                    {message.role === 'assistant' && message.id === 2 && activeConversation === 1 && <EvidenceBlock onOpenSource={openSource} />}
-                    {message.role === 'assistant' && (
-                      <div className="message-tools">
-                        <button onClick={copyAnswer}><Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? 'Copied' : 'Copy'}</button>
-                        <span>Grounded in repository and paper sources</span>
-                      </div>
-                    )}
-                  </div>
-                </article>
-              ))
-            )}
-            {isThinking && <div className="thinking"><span className="relevance-avatar">R</span><div><strong>Reviewing repository context</strong><span>Comparing files and research sources…</span></div></div>}
-            <div ref={endRef} />
-          </div>
-        </div>
-
-        <div className="composer-wrap">
-          <form className="composer" onSubmit={sendMessage}>
-            <textarea aria-label="Message Relevance" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="Ask about this repository…" />
-            <div className="composer-bottom">
-              <div>
-                <button type="button" className="composer-tool" aria-label="Attach context"><Icon name="paperclip" size={17} /></button>
-                <span className="scope-chip"><Icon name="github" size={13} /> rag-engine</span>
-              </div>
-              <button className="send-button" type="submit" disabled={!draft.trim() || isThinking} aria-label="Send message"><Icon name="send" size={17} /></button>
+          <div className="issue-toolbar">
+            <div className="status-tabs">
+              <button className={status === 'open' ? 'active' : ''} onClick={() => setStatus('open')}><Icon name="issue" size={16} /> Open <span>{openCount}</span></button>
+              <button className={status === 'resolved' ? 'active' : ''} onClick={() => setStatus('resolved')}><Icon name="check" size={16} /> Resolved <span>{resolvedCount}</span></button>
+              <button className={status === 'all' ? 'active' : ''} onClick={() => setStatus('all')}>All</button>
             </div>
-          </form>
-          <p className="composer-note">Relevance can make mistakes. Verify code changes and research claims.</p>
-        </div>
+            <label className="issue-search"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues…" /></label>
+          </div>
+
+          {activeLabel && <div className="active-filter">Filtered by <span><i className={`label-dot ${activeLabel}`} />{labelNames[activeLabel]}</span><button onClick={() => setActiveLabel(null)}>Clear <Icon name="close" size={13} /></button></div>}
+
+          <div className="issue-list">
+            {filteredIssues.length ? filteredIssues.map((issue) => (
+              <article key={issue.id} className={`issue-row ${selected?.id === issue.id ? 'selected' : ''}`} onClick={() => selectIssue(issue.id)}>
+                <div className={`status-icon ${issue.status}`}><Icon name={issue.status === 'open' ? 'issue' : 'check'} size={18} /></div>
+                <div className="issue-row-main">
+                  <div className="issue-row-title"><h2>{issue.title}</h2>{issue.confidence && <span className="match-score"><Icon name="spark" size={12} /> {issue.confidence}% match</span>}</div>
+                  <p>{issue.summary}</p>
+                  <div className="issue-row-meta"><span>#{issue.id}</span><span>opened {issue.time} by {issue.author}</span>{issue.labels.map((label) => <span className={`issue-label ${label}`} key={label}>{labelNames[label]}</span>)}</div>
+                </div>
+                <div className="issue-stats"><span title="Votes">↑ {issue.votes}</span><span><Icon name="comment" size={14} /> {issue.comments}</span></div>
+              </article>
+            )) : <div className="empty-list"><div><Icon name="search" size={24} /></div><h2>No issues found</h2><p>Try changing your filters or search query.</p></div>}
+          </div>
+        </section>
+
+        {selected && <aside className="issue-detail">
+          <div className="detail-mobile-head"><button onClick={() => setDetailOpen(false)}><span>←</span> All issues</button><button className="icon-button" onClick={() => setDetailOpen(false)} aria-label="Close issue"><Icon name="close" /></button></div>
+          <header className="detail-header">
+            <div className="detail-kicker"><span className={`state-badge ${selected.status}`}><Icon name={selected.status === 'open' ? 'issue' : 'check'} size={14} /> {selected.status}</span><span>#{selected.id}</span></div>
+            <h2>{selected.title}</h2>
+            <p>Opened {selected.time} by <strong>{selected.author}</strong></p>
+            <div className="detail-labels">{selected.labels.map((label) => <span className={`issue-label ${label}`} key={label}>{labelNames[label]}</span>)}</div>
+          </header>
+          <div className="detail-scroll">
+            <article className="post-card">
+              <div className="post-author"><span className={`post-avatar ${selected.author.includes('bot') ? 'bot' : ''}`}>{selected.avatar}</span><div><strong>{selected.author}</strong>{selected.author.includes('bot') && <em>BOT</em>}<span>opened this issue</span></div><button>•••</button></div>
+              <div className="post-content"><p>{selected.body}</p>
+                {selected.confidence && <div className="evidence-card"><div className="evidence-title"><span><Icon name="spark" size={15} /> Relevance evidence</span><strong>{selected.confidence}% match</strong></div>{selected.file && <div className="file-reference"><Icon name="code" size={15} /><code>{selected.file}</code><Icon name="arrow" size={14} /></div>}<p>Suggested next step: validate the finding against the current implementation and evaluation set before adopting the change.</p><a href="https://arxiv.org" target="_blank" rel="noreferrer">View paper and sources <Icon name="arrow" size={14} /></a></div>}
+              </div>
+              <div className="post-reactions"><button>↑ <span>{selected.votes}</span></button><button>Useful</button><button>Needs evidence</button></div>
+            </article>
+            <div className="discussion-divider"><span>{selected.comments} {selected.comments === 1 ? 'reply' : 'replies'}</span></div>
+            <article className="reply-card"><span className="post-avatar blue">AF</span><div><header><strong>Afonso F.</strong><span>8 minutes ago</span></header><p>This looks actionable. I’d benchmark it against our current baseline first and track latency alongside retrieval quality.</p><div><button>↑ 6</button><button>Reply</button></div></div></article>
+            {commentPosted && <article className="reply-card new-reply"><span className="post-avatar">YO</span><div><header><strong>You</strong><span>just now</span></header><p>Added a new reply to this discussion.</p></div></article>}
+          </div>
+          <form className="reply-composer" onSubmit={postComment}><div className="reply-avatar">BR</div><div><textarea value={comment} onChange={(event) => { setComment(event.target.value); setCommentPosted(false) }} placeholder="Add to the discussion…" rows={3} /><footer><span>Markdown supported</span><button disabled={!comment.trim()}>Comment</button></footer></div></form>
+        </aside>}
       </main>
 
-      <aside className="context-panel" aria-label="Evidence and sources" aria-hidden={!contextOpen}>
-        <header>
-          <div><span>Evidence</span><small>3 sources</small></div>
-          <button className="icon-button" aria-label="Close evidence panel" onClick={() => setContextOpen(false)}><Icon name="close" /></button>
-        </header>
-        <div className="source-tabs" role="tablist">
-          <button className={activeSource === 'chunk.ts' ? 'active' : ''} onClick={() => setActiveSource('chunk.ts')}>Repository</button>
-          <button className={activeSource === 'paper' ? 'active' : ''} onClick={() => setActiveSource('paper')}>Papers</button>
-        </div>
-        {activeSource === 'paper' ? (
-          <div className="source-detail paper-source">
-            <span className="source-type">RESEARCH PAPER · 2026</span>
-            <h2>Structure-Aware Segmentation for Technical Retrieval</h2>
-            <p className="authors">L. Chen, M. Rahman, A. Kovács</p>
-            <div className="source-section">
-              <span>Relevant finding</span>
-              <p>Boundary-aware segmentation improved recall on technical documents containing mixed prose and code, particularly at smaller retrieval depths.</p>
-            </div>
-            <div className="source-section">
-              <span>Why it matches</span>
-              <p>The evaluation corpus and 512-token baseline are similar to this repository’s current setup.</p>
-            </div>
-            <button className="source-link">Open on arXiv <Icon name="arrow" size={15} /></button>
-          </div>
-        ) : (
-          <div className="source-detail code-source">
-            <div className="file-heading"><Icon name="code" size={16} /><div><strong>chunk.ts</strong><span>src/retrieval</span></div></div>
-            <div className="code-preview" aria-label="Code excerpt">
-              <span>44</span><code>export function chunkDocument(</code>
-              <span>45</span><code>  document: Document,</code>
-              <span>46</span><code>  options = defaultOptions</code>
-              <span>47</span><code>{'{'}</code>
-              <span className="active-line">48</span><code className="active-line">  return splitByTokens(</code>
-              <span className="active-line">49</span><code className="active-line">    document.content, 512</code>
-              <span className="active-line">50</span><code className="active-line">  )</code>
-              <span>51</span><code>{'}'}</code>
-            </div>
-            <div className="source-section">
-              <span>Why this was cited</span>
-              <p>The hard-coded token limit creates chunks without checking document structure, headings, or code boundaries.</p>
-            </div>
-            <button className="source-link"><Icon name="github" size={15} /> Open in GitHub <Icon name="arrow" size={15} /></button>
-          </div>
-        )}
-        <div className="all-sources">
-          <span>Other sources</span>
-          <button><Icon name="code" size={15} /><div><strong>evaluate.ts</strong><small>src/evaluation · 4 references</small></div></button>
-          <button onClick={() => setActiveSource('paper')}><Icon name="document" size={15} /><div><strong>Semantic Boundaries in RAG</strong><small>arXiv · 2025 · 2 references</small></div></button>
-        </div>
-      </aside>
+      <button className="app-scrim" onClick={() => setSidebarOpen(false)} aria-label="Close navigation" />
+
+      {newIssueOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNewIssueOpen(false)}><section className="new-issue-modal" role="dialog" aria-modal="true" aria-labelledby="new-issue-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="modal-icon"><Icon name="issue" /></span><div><h2 id="new-issue-title">Create a new issue</h2><p>Start a discussion for this repository.</p></div></div><button className="icon-button" onClick={() => setNewIssueOpen(false)} aria-label="Close"><Icon name="close" /></button></header><form onSubmit={createIssue}><label>Title<input name="title" autoFocus required placeholder="What should the team discuss?" /></label><label>Description<textarea name="body" required rows={7} placeholder="Share context, evidence, and a suggested next step…" /></label><div className="modal-note"><Icon name="spark" size={16} /><span>Relevance will connect supporting research after the next scan.</span></div><footer><button type="button" className="cancel-button" onClick={() => setNewIssueOpen(false)}>Cancel</button><button className="primary-button" type="submit">Create issue <Icon name="arrow" size={16} /></button></footer></form></section></div>}
     </div>
   )
 }

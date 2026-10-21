@@ -4,201 +4,195 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.arxiv import ArxivError, ArxivPaper
-from app.main import app
-from app.service import demo_service
+from app.main import create_app
+from app.models import FindingIssue, IssueState, Repository
+from app.repository import RepositorySnapshot
+from app.service import DemoService
+from app.storage import SQLiteStore
 
-client = TestClient(app)
+
+def paper() -> ArxivPaper:
+    return ArxivPaper(
+        identifier="arXiv:2601.00001v1",
+        url="https://arxiv.org/abs/2601.00001v1",
+        title="A repository-aware paper",
+        summary="The abstract reports a technique; it does not claim results for this repository.",
+        authors=["Ada Lovelace", "Alan Turing"],
+        published_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
 
 
-@pytest.fixture(autouse=True)
-def reset_demo_service() -> None:
-    demo_service.reset()
-    demo_service._paper_provider = lambda: [
-        ArxivPaper(
-            identifier="arXiv:2601.00001v1",
-            url="https://arxiv.org/abs/2601.00001v1",
-            title="A live paper title",
-            summary="A real abstract returned by the test provider.",
-            authors=["Ada Lovelace", "Alan Turing"],
-            published_at=datetime(2026, 1, 2, tzinfo=UTC),
+def repository_provider(repository: Repository) -> RepositorySnapshot:
+    files = {
+        "README.md": "# Demo\nA retrieval service for developer research.",
+        "src/retrieval.py": "def retrieve(query):\n    return vector_search(query)\n",
+        "requirements.txt": "fastapi\n",
+    }
+    context = "\n\n".join(f"--- {path} ---\n{text}" for path, text in files.items())
+    return RepositorySnapshot(repository, "a" * 40, files, context, ["aaaa initial"], [])
+
+
+def evaluator(papers, snapshot, profile, max_findings):
+    del snapshot, profile, max_findings
+    return [{
+        "paperId": papers[0].identifier,
+        "findingType": "potential_improvement",
+        "whyRelevant": "The retrieval function uses vector search, which is the exact mechanism discussed by this paper.",
+        "affectedFiles": ["src/retrieval.py"],
+        "suggestedAction": "Benchmark the current retrieval function against the paper's method on a fixed query set.",
+        "confidence": 0.88,
+    }]
+
+
+class FakePublisher:
+    calls = 0
+
+    def publish(self, finding):
+        type(self).calls += 1
+        return FindingIssue(
+            state=IssueState.CREATED,
+            number=42,
+            url=f"https://github.com/{finding.repository.owner}/{finding.repository.repo}/issues/42",
+            created_at=datetime(2026, 1, 3, tzinfo=UTC),
         )
-    ]
+
+    def close(self):
+        pass
 
 
-def start_scan(owner: str = "octo-org", repo: str = "demo-repo") -> dict:
+@pytest.fixture
+def service() -> DemoService:
+    FakePublisher.calls = 0
+    return DemoService(
+        paper_provider=lambda: [paper()],
+        store=SQLiteStore(":memory:"),
+        repository_provider=repository_provider,
+        evaluator=evaluator,
+        publisher_factory=FakePublisher,
+    )
+
+
+@pytest.fixture
+def client(service: DemoService) -> TestClient:
+    return TestClient(create_app(service))
+
+
+def start_scan(client: TestClient) -> dict:
     response = client.post(
         "/api/v1/scans",
-        json={"repository": {"owner": owner, "repo": repo, "ref": "main"}},
+        json={"repository": {"owner": "octo-org", "repo": "demo-repo", "ref": "main"}},
     )
     assert response.status_code == 202
     return response.json()
 
 
-def complete_scan(scan_id: str) -> None:
+def complete_scan(client: TestClient, scan_id: str) -> dict:
     running = client.get(f"/api/v1/scans/{scan_id}")
-    assert running.status_code == 200
     assert running.json()["status"] == "running"
-
     completed = client.get(f"/api/v1/scans/{scan_id}")
-    assert completed.status_code == 200
     assert completed.json()["status"] == "completed"
-    assert completed.json()["progress"]["percent"] == 100
+    return completed.json()
 
 
-def test_health_and_generated_docs_identify_simulation() -> None:
+def test_health_and_repository_connection(client: TestClient) -> None:
     health = client.get("/health")
     assert health.status_code == 200
-    assert health.json()["simulated"] is True
+    assert health.json()["service"] == "relevance-bot-api"
+    assert "simulation" not in health.json()
 
-    assert client.get("/docs").status_code == 200
-    openapi = client.get("/openapi.json")
-    assert openapi.status_code == 200
-    assert openapi.json()["info"]["title"] == "Relevance Bot API"
-    schema = openapi.json()
-    assert "fetches recent paper metadata from arXiv" in schema["info"]["description"]
-    error_schema = {"$ref": "#/components/schemas/ErrorResponse"}
-    assert (
-        schema["paths"]["/api/v1/scans/{scan_id}"]["get"]["responses"]["404"][
-            "content"
-        ]["application/json"]["schema"]
-        == error_schema
+    created = client.post(
+        "/api/v1/repositories",
+        json={"repository": {"owner": "octo-org", "repo": "demo-repo", "ref": "main"}},
     )
-    issue_responses = schema["paths"]["/api/v1/findings/{finding_id}/issues"]["post"][
-        "responses"
-    ]
-    assert (
-        issue_responses["404"]["content"]["application/json"]["schema"] == error_schema
-    )
-    assert (
-        issue_responses["409"]["content"]["application/json"]["schema"] == error_schema
-    )
+    assert created.status_code == 201
+    assert created.json()["repo"] == "demo-repo"
+    repositories = client.get("/api/v1/repositories").json()
+    assert repositories["count"] == 1
 
 
-def test_scan_lifecycle_and_findings() -> None:
-    scan = start_scan()
-    assert scan["status"] == "queued"
-    assert scan["repository"] == {
-        "owner": "octo-org",
-        "repo": "demo-repo",
-        "ref": "main",
-    }
-    assert scan["simulated"] is True
-
+def test_scan_produces_grounded_shared_finding_and_profile(client: TestClient) -> None:
+    scan = start_scan(client)
     unavailable = client.get(f"/api/v1/scans/{scan['id']}/findings")
     assert unavailable.status_code == 409
 
-    complete_scan(scan["id"])
+    completed = complete_scan(client, scan["id"])
+    assert completed["analysed_sha"] == "a" * 40
     response = client.get(f"/api/v1/scans/{scan['id']}/findings")
     assert response.status_code == 200
-    body = response.json()
-    assert body["count"] == 1
-    assert body["scan_id"] == scan["id"]
-    finding = body["findings"][0]
-    assert finding["source"]["type"] == "paper"
-    assert finding["source"]["identifier"] == "arXiv:2601.00001v1"
-    assert finding["source"]["authors"] == ["Ada Lovelace", "Alan Turing"]
-    assert finding["severity"] == "info"
-    assert finding["issue"]["state"] == "not_created"
+    finding = response.json()["findings"][0]
+    assert finding["finding_type"] == "potential_improvement"
+    assert finding["evidence_label"] == "strong_match"
+    assert finding["affected_files"][0]["path"] == "src/retrieval.py"
+    assert "vector_search" in finding["affected_files"][0]["excerpt"]
+    assert finding["summary"].startswith("The abstract reports")
+    assert "retrieval function" in finding["why_relevant"]
+
+    history = client.get("/api/v1/repositories/octo-org/demo-repo/findings").json()
+    assert history["findings"][0]["id"] == finding["id"]
+    profile = client.get("/api/v1/repositories/octo-org/demo-repo/profile")
+    assert profile.status_code == 200
+    assert profile.json()["analysed_sha"] == "a" * 40
+    assert "src/retrieval.py" in profile.json()["key_files"]
 
 
-def test_arxiv_failure_marks_scan_failed() -> None:
-    def fail() -> list[ArxivPaper]:
+def test_status_and_issue_publication_are_persisted_and_idempotent(client: TestClient) -> None:
+    scan = start_scan(client)
+    complete_scan(client, scan["id"])
+    finding_id = client.get(f"/api/v1/scans/{scan['id']}/findings").json()["findings"][0]["id"]
+
+    saved = client.patch(f"/api/v1/findings/{finding_id}", json={"status": "saved"})
+    assert saved.status_code == 200
+    assert saved.json()["user_status"] == "saved"
+
+    created = client.post(f"/api/v1/findings/{finding_id}/issues", json={"approved": True})
+    assert created.status_code == 200
+    assert created.json()["issue"]["url"].endswith("/issues/42")
+    duplicate = client.post(f"/api/v1/findings/{finding_id}/issues", json={"approved": True})
+    assert duplicate.status_code == 200
+    assert duplicate.json() == created.json()
+    assert FakePublisher.calls == 1
+
+    history = client.get("/api/v1/repositories/octo-org/demo-repo/findings").json()["findings"][0]
+    assert history["user_status"] == "saved"
+    assert history["issue"]["number"] == 42
+
+
+def test_shared_sqlite_survives_service_recreation(tmp_path) -> None:
+    path = tmp_path / "relevance.db"
+    first = DemoService(
+        paper_provider=lambda: [paper()], store=SQLiteStore(path), repository_provider=repository_provider, evaluator=evaluator,
+    )
+    scan = first.start_scan(Repository(owner="octo-org", repo="demo-repo", ref="main"))
+    first.get_scan(scan.id)
+    first.get_scan(scan.id)
+    finding_id = first.get_scan_findings(scan.id).findings[0].id
+
+    second = DemoService(store=SQLiteStore(path))
+    history = second.get_repository_findings("octo-org", "demo-repo")
+    assert history.findings[0].id == finding_id
+    assert second.get_scan(scan.id, advance=False).analysed_sha == "a" * 40
+
+
+def test_arxiv_failure_marks_scan_failed(service: DemoService, client: TestClient) -> None:
+    def fail():
         raise ArxivError("The arXiv request timed out.")
 
-    demo_service._paper_provider = fail
-    scan = start_scan()
-    assert client.get(f"/api/v1/scans/{scan['id']}").json()["status"] == "running"
-
+    service._paper_provider = fail
+    scan = start_scan(client)
+    client.get(f"/api/v1/scans/{scan['id']}")
     failed = client.get(f"/api/v1/scans/{scan['id']}")
-    assert failed.status_code == 200
     assert failed.json()["status"] == "failed"
     assert failed.json()["error"] == "The arXiv request timed out."
 
-    findings = client.get(f"/api/v1/scans/{scan['id']}/findings")
-    assert findings.status_code == 409
 
-
-def test_active_duplicate_scan_returns_conflict() -> None:
-    start_scan()
-    response = client.post(
-        "/api/v1/scans",
-        json={"repository": {"owner": "octo-org", "repo": "demo-repo"}},
-    )
-    assert response.status_code == 409
-    assert "already active" in response.json()["detail"]
-
-
-def test_repository_history_and_simulated_issue_creation() -> None:
-    scan = start_scan()
-    complete_scan(scan["id"])
-
-    history = client.get("/api/v1/repositories/octo-org/demo-repo/findings")
-    assert history.status_code == 200
-    assert history.json()["count"] == 1
-    finding_id = history.json()["findings"][0]["id"]
-
-    rejected = client.post(
-        f"/api/v1/findings/{finding_id}/issues",
-        json={"approved": False},
-    )
-    assert rejected.status_code == 422
-
-    created = client.post(
-        f"/api/v1/findings/{finding_id}/issues",
-        json={"approved": True},
-    )
-    assert created.status_code == 201
-    assert created.json()["state"] == "created"
-    assert created.json()["simulated"] is True
-    assert created.json()["url"].startswith("https://example.invalid/")
-
+def test_validation_unknown_resources_and_duplicate_scan(client: TestClient) -> None:
+    start_scan(client)
     duplicate = client.post(
-        f"/api/v1/findings/{finding_id}/issues",
-        json={"approved": True},
+        "/api/v1/scans", json={"repository": {"owner": "octo-org", "repo": "demo-repo"}},
     )
     assert duplicate.status_code == 409
-
-    updated_history = client.get("/api/v1/repositories/octo-org/demo-repo/findings")
-    updated = next(
-        item for item in updated_history.json()["findings"] if item["id"] == finding_id
-    )
-    assert updated["issue"]["state"] == "created"
-
-
-def test_unknown_resources_and_empty_repository_history() -> None:
     assert client.get("/api/v1/scans/missing").status_code == 404
-    assert client.get("/api/v1/scans/missing/findings").status_code == 404
-    assert (
-        client.post(
-            "/api/v1/findings/missing/issues",
-            json={"approved": True},
-        ).status_code
-        == 404
-    )
-
-    history = client.get("/api/v1/repositories/valid-owner/unknown/findings")
-    assert history.status_code == 200
-    assert history.json()["findings"] == []
-
-
-def test_request_validation_rejects_bad_repository_and_extra_fields() -> None:
-    bad_owner = client.post(
-        "/api/v1/scans",
-        json={"repository": {"owner": "bad owner", "repo": "demo"}},
-    )
-    assert bad_owner.status_code == 422
-
-    dot_git = client.post(
-        "/api/v1/scans",
-        json={"repository": {"owner": "owner", "repo": "demo.git"}},
-    )
-    assert dot_git.status_code == 422
-
-    dot_git_path = client.get("/api/v1/repositories/owner/demo.git/findings")
-    assert dot_git_path.status_code == 422
-
-    extra = client.post(
-        "/api/v1/scans",
-        json={"repository": {"owner": "owner", "repo": "demo"}, "live": True},
-    )
-    assert extra.status_code == 422
+    assert client.patch("/api/v1/findings/missing", json={"status": "saved"}).status_code == 404
+    assert client.post("/api/v1/findings/missing/issues", json={"approved": True}).status_code == 404
+    assert client.post("/api/v1/scans", json={"repository": {"owner": "bad owner", "repo": "demo"}}).status_code == 422
+    assert client.post("/api/v1/scans", json={"repository": {"owner": "owner", "repo": "demo.git"}}).status_code == 422

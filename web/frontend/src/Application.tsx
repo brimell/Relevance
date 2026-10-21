@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   ApiError,
+  addRepository,
   createIssue,
+  getProjectProfile,
+  getRepositories,
   getRepositoryFindings,
   getScan,
   getScanFindings,
   startScan,
+  updateFindingStatus as persistFindingStatus,
   type Finding,
+  type ProjectProfile,
+  type RepositoryConnection,
   type Scan,
 } from './api'
 import './application.css'
@@ -30,24 +36,17 @@ type IconName =
   | 'settings'
 
 type Page = 'overview' | 'discoveries' | 'repositories'
-type FindingStatus = 'new' | 'saved' | 'dismissed'
+type FindingStatus = Finding['user_status']
 type StatusFilter = 'active' | 'all' | FindingStatus
 type SourceFilter = 'all' | Finding['source']['type']
 type SeverityFilter = 'all' | Finding['severity']
 
-const repository = {
-  owner: 'brimell',
-  repo: 'SweetHomeAlabama256',
-  ref: 'web-dev',
-} as const
-const repositoryName = `${repository.owner}/${repository.repo}`
-const repositoryUrl = `https://github.com/${repositoryName}`
 const pagePaths: Record<Page, string> = {
   overview: '/',
   discoveries: '/discoveries',
   repositories: '/repositories',
 }
-const DEFAULT_SIMULATION_NOTICE = 'Paper metadata is fetched live from arXiv. Repository analysis, relevance scoring, and GitHub issue creation are simulated.'
+const SELECTED_REPOSITORY_STORAGE_KEY = 'relevance:selected-repository'
 const MAX_SCAN_POLLS = 10
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
@@ -84,14 +83,48 @@ function formatDate(value: string | null, fallback = 'Date not provided') {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
-function sourceTypeLabel(finding: Finding) {
-  return finding.source.type === 'paper' ? 'Paper finding' : 'CVE finding'
+function findingTypeLabel(finding: Finding) {
+  const labels: Record<Finding['finding_type'], string> = {
+    potential_improvement: 'Potential improvement',
+    challenges_assumption: 'Challenges an assumption',
+    new_technique: 'New technique',
+  }
+  return labels[finding.finding_type]
 }
 
-function relevanceLabel(finding: Finding) {
-  if (finding.relevance === 'high') return 'Strong match'
-  if (finding.relevance === 'medium') return 'Worth reviewing'
-  return 'Exploratory'
+function evidenceLabel(finding: Finding) {
+  const labels: Record<Finding['evidence_label'], string> = {
+    strong_match: 'Strong match',
+    worth_reviewing: 'Worth reviewing',
+    exploratory: 'Exploratory',
+  }
+  return labels[finding.evidence_label]
+}
+
+function repositoryKey(repository: Pick<RepositoryConnection, 'owner' | 'repo' | 'ref'>) {
+  return `${repository.owner}/${repository.repo}@${repository.ref}`
+}
+
+function repositoryFileUrl(repository: RepositoryConnection, path: string) {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+  const revision = repository.analysed_sha ?? repository.ref ?? 'HEAD'
+  return `https://github.com/${repository.owner}/${repository.repo}/blob/${encodeURIComponent(revision)}/${encodedPath}`
+}
+
+function readStoredRepositoryKey() {
+  try {
+    return window.localStorage.getItem(SELECTED_REPOSITORY_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function storeRepositoryKey(key: string) {
+  try {
+    window.localStorage.setItem(SELECTED_REPOSITORY_STORAGE_KEY, key)
+  } catch {
+    // Repository selection still works when browser storage is unavailable.
+  }
 }
 
 function capitalise(value: string) {
@@ -116,10 +149,13 @@ function pageFromPath(pathname: string): Page {
 
 function Application() {
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname))
+  const [repositories, setRepositories] = useState<RepositoryConnection[]>([])
+  const [repositoriesLoading, setRepositoriesLoading] = useState(true)
+  const [selectedRepository, setSelectedRepository] = useState<RepositoryConnection | null>(null)
+  const [projectProfile, setProjectProfile] = useState<ProjectProfile | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
-  const [findingsLoading, setFindingsLoading] = useState(true)
+  const [findingsLoading, setFindingsLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
-  const [simulationNotice, setSimulationNotice] = useState(DEFAULT_SIMULATION_NOTICE)
   const [scan, setScan] = useState<Scan | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -130,28 +166,81 @@ function Application() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [dateFilter, setDateFilter] = useState<'all' | '2024'>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
-  const [statuses, setStatuses] = useState<Record<string, FindingStatus>>({})
+  const [updatingFindingId, setUpdatingFindingId] = useState<string | null>(null)
   const [publishingFindingId, setPublishingFindingId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [monitoringEnabled, setMonitoringEnabled] = useState(false)
   const [scanInterval, setScanInterval] = useState('12 hours')
   const [threshold, setThreshold] = useState('Strong matches only')
-  const [publishingEnabled, setPublishingEnabled] = useState(false)
+  const [confirmIssueCreation, setConfirmIssueCreation] = useState(true)
   const [topics, setTopics] = useState({ 'cs.AI': true, 'cs.CL': true, 'cs.LG': true })
   const [repositoryInput, setRepositoryInput] = useState('')
-  const [connectedRepositories, setConnectedRepositories] = useState([repositoryName])
+  const [repositoryRefInput, setRepositoryRefInput] = useState('main')
+  const [addingRepository, setAddingRepository] = useState(false)
+  const [repositoryReload, setRepositoryReload] = useState(0)
   const scanRun = useRef(0)
   const toastTimer = useRef<number | null>(null)
+  const repositoryName = selectedRepository ? `${selectedRepository.owner}/${selectedRepository.repo}` : 'No repository selected'
+  const repositoryUrl = selectedRepository ? `https://github.com/${repositoryName}` : null
 
   useEffect(() => {
     let active = true
+    setRepositoriesLoading(true)
 
-    getRepositoryFindings(repository.owner, repository.repo)
+    getRepositories()
       .then((response) => {
         if (!active) return
+        setRepositories(response.repositories)
+        const storedKey = readStoredRepositoryKey()
+        const preferred = response.repositories.find((item) => repositoryKey(item) === storedKey) ?? response.repositories[0] ?? null
+        setSelectedRepository(preferred)
+        if (preferred) storeRepositoryKey(repositoryKey(preferred))
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (active) setApiError(errorMessage(error))
+      })
+      .finally(() => {
+        if (active) setRepositoriesLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [repositoryReload])
+
+  useEffect(() => {
+    if (!selectedRepository) {
+      setFindings([])
+      setProjectProfile(null)
+      setFindingsLoading(false)
+      setSelectedId(null)
+      setLastScan('No repository selected')
+      return
+    }
+
+    let active = true
+    scanRun.current += 1
+    setFindingsLoading(true)
+    setFindings([])
+    setProjectProfile(null)
+    setSelectedId(null)
+    setDetailOpen(false)
+    setScan(null)
+    setApiError(null)
+    setLastScan(selectedRepository.analysed_sha ? `Analysed commit ${selectedRepository.analysed_sha.slice(0, 7)}` : 'No scans yet')
+
+    Promise.all([
+      getRepositoryFindings(selectedRepository.owner, selectedRepository.repo),
+      getProjectProfile(selectedRepository.owner, selectedRepository.repo).catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+      }),
+    ])
+      .then(([response, profile]) => {
+        if (!active) return
         setFindings(response.findings)
-        setSimulationNotice(response.simulation_notice)
-        setStatuses(Object.fromEntries(response.findings.map((finding) => [finding.id, 'new'])))
+        setProjectProfile(profile)
         setSelectedId(response.findings[0]?.id ?? null)
         const latest = response.findings.map((finding) => finding.detected_at).sort().at(-1)
         if (latest) setLastScan(`Latest finding detected ${formatDate(latest)}`)
@@ -163,6 +252,12 @@ function Application() {
         if (active) setFindingsLoading(false)
       })
 
+    return () => {
+      active = false
+    }
+  }, [selectedRepository?.owner, selectedRepository?.repo, selectedRepository?.ref])
+
+  useEffect(() => {
     function closeOverlays(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setDetailOpen(false)
@@ -172,7 +267,6 @@ function Application() {
 
     window.addEventListener('keydown', closeOverlays)
     return () => {
-      active = false
       scanRun.current += 1
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current)
       window.removeEventListener('keydown', closeOverlays)
@@ -194,17 +288,16 @@ function Application() {
   const visibleFindings = useMemo(() => {
     const normalisedQuery = query.trim().toLowerCase()
     return findings.filter((finding) => {
-      const status = statuses[finding.id] ?? 'new'
-      const searchable = `${finding.title} ${finding.summary} ${finding.suggested_action} ${finding.source.identifier} ${finding.source.authors.join(' ')}`.toLowerCase()
+      const searchable = `${finding.title} ${finding.summary} ${finding.why_relevant} ${finding.suggested_action} ${finding.source.identifier} ${finding.source.authors.join(' ')} ${finding.affected_files.map((file) => file.path).join(' ')}`.toLowerCase()
       const publishedYear = finding.source.published_at ? new Date(finding.source.published_at).getFullYear() : null
       const matchesQuery = !normalisedQuery || searchable.includes(normalisedQuery)
       const matchesSource = sourceFilter === 'all' || finding.source.type === sourceFilter
       const matchesSeverity = severityFilter === 'all' || finding.severity === severityFilter
       const matchesDate = dateFilter === 'all' || (publishedYear !== null && publishedYear >= 2024)
-      const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? status !== 'dismissed' : status === statusFilter)
+      const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? finding.user_status !== 'dismissed' : finding.user_status === statusFilter)
       return matchesQuery && matchesSource && matchesSeverity && matchesDate && matchesStatus
     })
-  }, [dateFilter, findings, query, severityFilter, sourceFilter, statusFilter, statuses])
+  }, [dateFilter, findings, query, severityFilter, sourceFilter, statusFilter])
 
   const selected = findings.find((finding) => finding.id === selectedId) ?? findings[0] ?? null
   const scanning = scan?.status === 'queued' || scan?.status === 'running'
@@ -232,9 +325,18 @@ function Application() {
     setDetailOpen(true)
   }
 
-  function updateFindingStatus(id: string, status: FindingStatus) {
-    setStatuses((current) => ({ ...current, [id]: status }))
-    notify(status === 'saved' ? 'Finding saved in this browser session.' : status === 'dismissed' ? 'Finding dismissed. Use the status filter to recover it.' : 'Finding returned to the active feed.')
+  async function updateFindingStatus(id: string, status: FindingStatus) {
+    if (updatingFindingId !== null) return
+    setUpdatingFindingId(id)
+    try {
+      const updated = await persistFindingStatus(id, status)
+      setFindings((current) => current.map((finding) => finding.id === id ? updated : finding))
+      notify(status === 'saved' ? 'Finding saved.' : status === 'dismissed' ? 'Finding dismissed. Use the status filter to recover it.' : 'Finding returned to the active feed.')
+    } catch (error: unknown) {
+      notify(errorMessage(error))
+    } finally {
+      setUpdatingFindingId(null)
+    }
   }
 
   function clearFilters() {
@@ -247,15 +349,19 @@ function Application() {
 
   async function runScan() {
     if (scanning) return
+    if (!selectedRepository) {
+      notify('Select or add a repository before running a scan.')
+      return
+    }
+    const scannedRepository = selectedRepository
     const run = scanRun.current + 1
     scanRun.current = run
     setApiError(null)
 
     try {
-      let currentScan = await startScan(repository)
+      let currentScan = await startScan({ owner: scannedRepository.owner, repo: scannedRepository.repo, ref: scannedRepository.ref })
       if (scanRun.current !== run) return
       setScan(currentScan)
-      setSimulationNotice(currentScan.simulation_notice)
 
       let pollCount = 0
       while (currentScan.status === 'queued' || currentScan.status === 'running') {
@@ -273,18 +379,19 @@ function Application() {
         throw new Error(currentScan.error ?? 'The scan failed without an error message.')
       }
 
-      const response = await getScanFindings(currentScan.id)
+      const [response, profile] = await Promise.all([
+        getScanFindings(currentScan.id),
+        getProjectProfile(scannedRepository.owner, scannedRepository.repo).catch(() => null),
+      ])
       if (scanRun.current !== run) return
       setFindings(response.findings)
-      setSimulationNotice(response.simulation_notice)
-      setStatuses((current) => ({
-        ...Object.fromEntries(response.findings.map((finding) => [finding.id, 'new' as const])),
-        ...current,
-      }))
+      setProjectProfile(profile)
       setSelectedId(response.findings[0]?.id ?? null)
+      setRepositories((current) => current.map((item) => repositoryKey(item) === repositoryKey(scannedRepository) ? { ...item, analysed_sha: currentScan.analysed_sha } : item))
+      setSelectedRepository((current) => current && repositoryKey(current) === repositoryKey(scannedRepository) ? { ...current, analysed_sha: currentScan.analysed_sha } : current)
       setApiError(null)
-      setLastScan(`arXiv checked ${formatDate(currentScan.completed_at)}`)
-      notify(`Scan complete: ${response.count} recent ${response.count === 1 ? 'paper' : 'papers'} returned by the bot API.`)
+      setLastScan(`Scan completed ${formatDate(currentScan.completed_at)}`)
+      notify(`Scan complete: ${response.count} ${response.count === 1 ? 'finding' : 'findings'} returned for ${scannedRepository.owner}/${scannedRepository.repo}.`)
     } catch (error: unknown) {
       const message = errorMessage(error)
       setApiError(message)
@@ -294,17 +401,19 @@ function Application() {
 
   async function approveIssue(finding: Finding) {
     if (finding.issue.state === 'created' || publishingFindingId !== null) return
-    const approved = window.confirm('Approve simulated issue creation? The bot API will not contact GitHub and will return a non-actionable example.invalid URL.')
-    if (!approved) return
+    if (!selectedRepository?.github_connected) {
+      notify('Connect GitHub for this repository before creating an issue.')
+      return
+    }
+    if (confirmIssueCreation && !window.confirm(`Create a GitHub issue for this finding in ${repositoryName}?`)) return
 
     setPublishingFindingId(finding.id)
     try {
       const response = await createIssue(finding.id)
-      setFindings((current) => current.map((item) => item.id === finding.id
-        ? { ...item, issue: { state: response.state, url: response.url, created_at: response.created_at } }
+      setFindings((current) => current.map((item) => item.id === response.finding_id
+        ? { ...item, issue: response.issue }
         : item))
-      setSimulationNotice(response.simulation_notice)
-      notify('Simulated issue created. No request was sent to GitHub.')
+      notify(response.issue.state === 'created' ? `GitHub issue${response.issue.number ? ` #${response.issue.number}` : ''} created.` : response.issue.error ?? 'GitHub issue creation failed.')
     } catch (error: unknown) {
       notify(errorMessage(error))
     } finally {
@@ -312,21 +421,39 @@ function Application() {
     }
   }
 
-  function connectRepository(event: FormEvent) {
+  function selectRepository(repository: RepositoryConnection) {
+    scanRun.current += 1
+    setSelectedRepository(repository)
+    storeRepositoryKey(repositoryKey(repository))
+    setApiError(null)
+  }
+
+  async function connectRepository(event: FormEvent) {
     event.preventDefault()
-    const match = repositoryInput.trim().match(/^(?:https?:\/\/github\.com\/)?([\w.-]+\/[\w.-]+)\/?$/i)
-    if (!match) {
-      notify('Enter a GitHub repository as owner/name or a github.com URL.')
+    const match = repositoryInput.trim().match(/^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+)\/?$/i)
+    const ref = repositoryRefInput.trim()
+    if (!match || !ref) {
+      notify('Enter a GitHub repository as owner/name and a branch or ref.')
       return
     }
-    if (!connectedRepositories.includes(match[1])) setConnectedRepositories((current) => [...current, match[1]])
-    setRepositoryInput('')
-    notify('Repository added to this browser session. API scanning remains configured for the selected repository.')
+
+    setAddingRepository(true)
+    try {
+      const connected = await addRepository({ owner: match[1], repo: match[2], ref })
+      setRepositories((current) => [...current.filter((item) => repositoryKey(item) !== repositoryKey(connected)), connected])
+      selectRepository(connected)
+      setRepositoryInput('')
+      notify(`${connected.owner}/${connected.repo} added and selected.`)
+    } catch (error: unknown) {
+      notify(errorMessage(error))
+    } finally {
+      setAddingRepository(false)
+    }
   }
 
   const navigation: { id: Page; label: string; icon: IconName; count?: number }[] = [
     { id: 'overview', label: 'Overview', icon: 'activity' },
-    { id: 'discoveries', label: 'Discoveries', icon: 'book', count: findings.filter((finding) => statuses[finding.id] !== 'dismissed').length },
+    { id: 'discoveries', label: 'Discoveries', icon: 'book', count: findings.filter((finding) => finding.user_status !== 'dismissed').length },
     { id: 'repositories', label: 'Repositories', icon: 'settings' },
   ]
 
@@ -334,10 +461,10 @@ function Application() {
     <div className={`application ${mobileNavOpen ? 'nav-is-open' : ''}`}>
       <aside className="sidebar" aria-label="Application navigation">
         <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><span /></span><span>Relevance</span></div>
-        <div className="repository-context"><span className="context-label">Selected repository</span><div><Icon name="github" size={17} /><strong>{repositoryName}</strong></div><span className="branch-name">{repository.ref}</span></div>
+        <div className="repository-context"><span className="context-label">Selected repository</span><div><Icon name="github" size={17} /><strong>{repositoryName}</strong></div><span className="branch-name">{selectedRepository?.ref ?? 'Add a repository to begin'}</span></div>
         <nav>{navigation.map((item) => <button className={`nav-item ${page === item.id ? 'active' : ''}`} key={item.id} onClick={() => navigate(item.id)}><Icon name={item.icon} /><span>{item.label}</span>{item.count !== undefined && <em>{item.count}</em>}</button>)}</nav>
         <div className="monitor-summary"><div><span className={`status-dot ${monitoringEnabled ? '' : 'paused'}`} /><strong>{monitoringEnabled ? 'Schedule preference on' : 'Manual scans only'}</strong></div><p>{monitoringEnabled ? `Every ${scanInterval.toLowerCase()} (preference only)` : 'Use Run scan to query the API'}</p></div>
-        <div className="demo-note"><span>Integration boundary</span><p>{simulationNotice}</p></div>
+        <div className="demo-note"><span>GitHub status</span><p>{selectedRepository?.github_connected ? `Connected for ${repositoryName}. Findings can be published as GitHub issues.` : selectedRepository ? `Not connected for ${repositoryName}. Configure GITHUB_TOKEN on the server to enable issue creation.` : 'Add a repository to start scanning.'}</p></div>
       </aside>
 
       <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />
@@ -347,38 +474,39 @@ function Application() {
         <div className="mobile-brand">Relevance</div>
         <div className="topbar-repository"><strong>{repositoryName}</strong><span>{lastScan}</span></div>
         <div className="topbar-monitor"><span className={`status-dot ${apiError ? 'paused' : ''}`} /><span>{apiError ? 'API unavailable' : 'Bot API linked'}</span></div>
-        <button className="scan-button" type="button" onClick={runScan} disabled={scanning}>
+        <button className="scan-button" type="button" onClick={runScan} disabled={scanning || !selectedRepository}>
           {scanning ? <span className="spinner" aria-hidden="true" /> : <Icon name="radar" size={17} />}
           {scanning ? 'Scanning…' : 'Run scan'}
         </button>
       </header>
 
       {page === 'overview' && <main className="content-page overview-page">
-        <header className="page-header"><div><p className="eyebrow">Bot API workbench</p><h1>Review papers from the shared scan service</h1><p>Fetch recent paper metadata from arXiv, inspect the available evidence and explicitly approve any simulated issue action.</p></div><div className="monitoring-state"><span className={`status-dot ${apiError ? 'paused' : ''}`} /><div><strong>{apiError ? 'API connection failed' : 'API connection ready'}</strong><span>{scanning ? scan.progress.stage : lastScan}</span></div></div></header>
+        <header className="page-header"><div><p className="eyebrow">Research workbench</p><h1>Review research relevant to {repositoryName}</h1><p>Inspect paper evidence, repository-specific inferences and suggested experiments before publishing a finding to GitHub.</p></div><div className="monitoring-state"><span className={`status-dot ${apiError ? 'paused' : ''}`} /><div><strong>{apiError ? 'API connection failed' : 'API connection ready'}</strong><span>{scanning ? scan.progress.stage : lastScan}</span></div></div></header>
 
-        {apiError && <div className="api-message error" role="alert"><strong>Bot API unavailable</strong><span>{apiError}</span><button onClick={runScan} disabled={scanning}>Retry with a scan</button></div>}
+        {apiError && <div className="api-message error" role="alert"><strong>Bot API unavailable</strong><span>{apiError}</span><button onClick={() => selectedRepository ? runScan() : setRepositoryReload((value) => value + 1)} disabled={scanning}>{selectedRepository ? 'Retry with a scan' : 'Retry repositories'}</button></div>}
+        {selectedRepository && !selectedRepository.github_connected && <div className="api-message"><strong>GitHub not connected</strong><span>Scans and findings are available for {repositoryName}, but findings cannot be published as issues until GitHub credentials are configured on the API server.</span></div>}
         {scanning && scan && <ScanStatus scan={scan} />}
 
         <div className="overview-layout">
           <section className="activity-panel" aria-labelledby="activity-title">
             <div className="panel-heading"><div><p className="eyebrow">Shared API state</p><h2 id="activity-title">What the web app received</h2></div><span className="demo-label">Live metadata</span></div>
             <ol className="activity-timeline">
-              <li><span className="activity-icon"><Icon name="github" size={16} /></span><div><strong>Repository selected</strong><p>The owner, repository and ref sent to the scan endpoint.</p></div><b>{repositoryName}</b></li>
-              <li><span className="activity-icon"><Icon name="radar" size={16} /></span><div><strong>Latest scan state</strong><p>{scan?.progress.stage ?? 'No scan has been started from this browser session.'}</p></div><b>{scan ? capitalise(scan.status) : 'Not run'}</b></li>
-              <li><span className="activity-icon"><Icon name="book" size={16} /></span><div><strong>Findings returned</strong><p>Records currently held by the bot API process for this repository.</p></div><b>{findings.length}</b></li>
-              <li><span className="activity-icon"><Icon name="github" size={16} /></span><div><strong>Simulated issues</strong><p>Approved issue simulations; no GitHub request was made.</p></div><b>{createdIssueCount}</b></li>
+              <li><span className="activity-icon"><Icon name="github" size={16} /></span><div><strong>Repository selected</strong><p>{selectedRepository ? `Ref ${selectedRepository.ref}${selectedRepository.analysed_sha ? ` · analysed ${selectedRepository.analysed_sha.slice(0, 7)}` : ''}` : 'Add a repository from repository controls.'}</p></div><b>{repositoryName}</b></li>
+              <li><span className="activity-icon"><Icon name="radar" size={16} /></span><div><strong>Project profile</strong><p>{projectProfile ? `${projectProfile.summary.slice(0, 140)}${projectProfile.summary.length > 140 ? '…' : ''}` : 'Run a scan to generate a repository profile from README, manifests, and source files.'}</p></div><b>{projectProfile ? `${projectProfile.key_files.length} files` : 'Pending'}</b></li>
+              <li><span className="activity-icon"><Icon name="book" size={16} /></span><div><strong>Findings returned</strong><p>Records currently held by the shared store for this repository.</p></div><b>{findings.length}</b></li>
+              <li><span className="activity-icon"><Icon name="github" size={16} /></span><div><strong>GitHub issues</strong><p>Findings published to GitHub for this repository.</p></div><b>{createdIssueCount}</b></li>
             </ol>
             <footer><Icon name="clock" size={15} /><span>{lastScan}</span><button onClick={() => navigate('repositories')}>View controls <Icon name="arrow" size={14} /></button></footer>
           </section>
 
-          <aside className="run-summary" aria-label="Finding summary"><p className="eyebrow">API findings</p><strong className="summary-number">{findings.length}</strong><h2>{findings.length === 1 ? 'paper available' : 'papers available'}</h2><p>{findingsLoading ? 'Loading repository history from the bot API.' : findings.length > 0 ? 'These records contain live arXiv metadata held in the bot API’s in-memory store.' : 'No papers are stored for this repository yet. Run a scan to query arXiv.'}</p><button onClick={() => findings.length > 0 ? navigate('discoveries') : runScan()} disabled={scanning}>{findings.length > 0 ? 'Review findings' : 'Run first scan'} <Icon name="arrow" size={15} /></button></aside>
+          <aside className="run-summary" aria-label="Finding summary"><p className="eyebrow">Repository findings</p><strong className="summary-number">{findings.length}</strong><h2>{findings.length === 1 ? 'finding available' : 'findings available'}</h2><p>{findingsLoading ? `Loading findings for ${repositoryName}.` : findings.length > 0 ? `Research evaluated against ${repositoryName}.` : selectedRepository ? 'No findings are stored for this repository yet. Run a scan to analyse it.' : 'Add a repository before running a scan.'}</p><button onClick={() => findings.length > 0 ? navigate('discoveries') : selectedRepository ? runScan() : navigate('repositories')} disabled={scanning}>{findings.length > 0 ? 'Review findings' : selectedRepository ? 'Run first scan' : 'Add repository'} <Icon name="arrow" size={15} /></button></aside>
         </div>
 
         <section className="recent-findings" aria-labelledby="recent-title">
           <div className="section-title-row"><div><p className="eyebrow">Recent findings</p><h2 id="recent-title">Returned by the bot API</h2></div><button onClick={() => navigate('discoveries')}>View discoveries</button></div>
           <div className="recent-list">
-            {findings.slice(0, 2).map((finding) => <button key={finding.id} onClick={() => selectFinding(finding.id)}><span className="finding-type">{sourceTypeLabel(finding)}</span><strong>{finding.title}</strong><code>{finding.source.identifier}</code><Icon name="chevron" size={17} /></button>)}
-            {!findingsLoading && findings.length === 0 && <div className="empty-state"><h2>No scans yet</h2><p>Run a scan to request recent paper metadata from arXiv through the bot API.</p><button onClick={runScan}>Run scan</button></div>}
+            {findings.slice(0, 2).map((finding) => <button key={finding.id} onClick={() => selectFinding(finding.id)}><span className="finding-type">{findingTypeLabel(finding)}</span><strong>{finding.title}</strong><code>{finding.source.identifier}</code><Icon name="chevron" size={17} /></button>)}
+            {!findingsLoading && findings.length === 0 && <div className="empty-state"><h2>{selectedRepository ? 'No scans yet' : 'No repository selected'}</h2><p>{selectedRepository ? `Run a scan to analyse ${repositoryName} and find relevant research.` : 'Add and select a repository before running a scan.'}</p><button onClick={selectedRepository ? runScan : () => navigate('repositories')}>{selectedRepository ? 'Run scan' : 'Add repository'}</button></div>}
           </div>
         </section>
       </main>}
@@ -386,11 +514,12 @@ function Application() {
       {page === 'discoveries' && <main className="content-page discoveries-page" id="discoveries">
         <div className="discoveries-shell">
           <header className="page-header discoveries-header">
-            <div><p className="eyebrow">Shared findings feed</p><h1 id="discoveries-title">Discoveries</h1><p>Review records returned by the bot API and open a finding only when you need its available evidence.</p></div>
+            <div><p className="eyebrow">{repositoryName}</p><h1 id="discoveries-title">Discoveries</h1><p>Review paper claims separately from Relevance’s inferred connection to this repository.</p></div>
             <div className="finding-count"><strong>{visibleFindings.length}</strong><span>{visibleFindings.length === 1 ? 'finding' : 'findings'}</span></div>
           </header>
 
           {apiError && <div className="api-message error" role="alert"><strong>Feed unavailable</strong><span>{apiError}</span></div>}
+          {selectedRepository && !selectedRepository.github_connected && <div className="api-message"><strong>GitHub not connected</strong><span>You can review and manage findings for {repositoryName}, but issue publishing is unavailable until GITHUB_TOKEN is configured.</span></div>}
           {scanning && scan && <ScanStatus scan={scan} />}
 
           <section className="discovery-controls" aria-label="Discovery filters">
@@ -404,47 +533,56 @@ function Application() {
           </section>
 
           <section className="finding-list" aria-labelledby="discoveries-title">
-            {findingsLoading ? <div className="empty-state"><span className="spinner" aria-hidden="true" /><h2>Loading findings</h2><p>Requesting repository history from the bot API.</p></div> : visibleFindings.length > 0 ? visibleFindings.map((finding) => {
-              const status = statuses[finding.id] ?? 'new'
+            {findingsLoading ? <div className="empty-state"><span className="spinner" aria-hidden="true" /><h2>Loading findings</h2><p>Requesting findings for {repositoryName}.</p></div> : visibleFindings.length > 0 ? visibleFindings.map((finding) => {
+              const status = finding.user_status
               const expanded = detailOpen && selected?.id === finding.id
+              const firstAffectedFile = finding.affected_files[0]
+              const issueActionDisabled = !selectedRepository?.github_connected || publishingFindingId !== null
               return <article className={`finding-row ${expanded ? 'selected' : ''}`} key={finding.id}>
                 <div className="finding-row-main">
-                  <div className="finding-heading"><span className="finding-type">{sourceTypeLabel(finding)}</span><span className={`priority priority-${finding.severity}`}>{capitalise(finding.severity)} severity</span><span className={`strength ${finding.relevance === 'high' ? 'strong' : ''}`}><Icon name="check" size={13} />{relevanceLabel(finding)}</span></div>
+                  <div className="finding-heading"><span className="finding-type">{findingTypeLabel(finding)}</span><span className={`priority priority-${finding.severity}`}>{capitalise(finding.severity)} severity</span><span className={`strength ${finding.evidence_label === 'strong_match' ? 'strong' : ''}`}><Icon name="check" size={13} />{evidenceLabel(finding)}</span></div>
                   <button className="insight-link" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)} aria-expanded={expanded} aria-controls={`finding-detail-${finding.id}`}><h2>{finding.title}</h2></button>
                   <p className="paper-meta"><a href={finding.source.url} target="_blank" rel="noreferrer">{finding.source.identifier}<Icon name="external" size={12} /></a><span>{authorLabel(finding.source.authors)} · {formatDate(finding.source.published_at)}</span></p>
-                  <p className="why-relevant"><strong>arXiv abstract</strong>{finding.summary}</p>
-                  <div className="finding-actions">
-                    <button className="primary-action" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)}>{expanded ? 'Hide evidence' : 'View evidence'}</button>
-                    <button className={status === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(finding.id, status === 'saved' ? 'new' : 'saved')}><Icon name="bookmark" size={15} />{status === 'saved' ? 'Saved' : 'Save'}</button>
-                    <button onClick={() => updateFindingStatus(finding.id, status === 'dismissed' ? 'new' : 'dismissed')}><Icon name="close" size={15} />{status === 'dismissed' ? 'Restore' : 'Dismiss'}</button>
-                    <button onClick={() => approveIssue(finding)} disabled={finding.issue.state === 'created' || publishingFindingId !== null}><Icon name="github" size={15} />{finding.issue.state === 'created' ? 'Simulated issue created' : publishingFindingId === finding.id ? 'Creating…' : 'Create simulated issue'}</button>
+                  <p className="why-relevant"><strong>Why Relevance flagged it · inference</strong>{finding.why_relevant}</p>
+                  <div className="finding-footer">
+                    {firstAffectedFile && selectedRepository ? <a className="affected-file" href={repositoryFileUrl(selectedRepository, firstAffectedFile.path)} target="_blank" rel="noreferrer"><code>{firstAffectedFile.path}</code>{finding.affected_files.length > 1 && <span>+{finding.affected_files.length - 1} more</span>}<Icon name="external" size={12} /></a> : <span className="affected-file">No affected files identified</span>}
+                    <div className="finding-actions">
+                      <button className="primary-action" onClick={() => expanded ? setDetailOpen(false) : selectFinding(finding.id)}>{expanded ? 'Hide evidence' : 'View evidence'}</button>
+                      <button className={status === 'saved' ? 'active' : ''} onClick={() => updateFindingStatus(finding.id, status === 'saved' ? 'new' : 'saved')} disabled={updatingFindingId !== null}><Icon name="bookmark" size={15} />{updatingFindingId === finding.id ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save'}</button>
+                      <button onClick={() => updateFindingStatus(finding.id, status === 'dismissed' ? 'new' : 'dismissed')} disabled={updatingFindingId !== null}><Icon name="close" size={15} />{updatingFindingId === finding.id ? 'Updating…' : status === 'dismissed' ? 'Restore' : 'Dismiss'}</button>
+                      {finding.issue.state === 'created' ? finding.issue.url ? <a href={finding.issue.url} target="_blank" rel="noreferrer"><Icon name="github" size={15} />Open on GitHub</a> : <button disabled><Icon name="github" size={15} />Issue created</button> : <button onClick={() => approveIssue(finding)} disabled={issueActionDisabled} title={!selectedRepository?.github_connected ? 'Connect GitHub to publish this finding' : undefined}><Icon name="github" size={15} />{publishingFindingId === finding.id ? 'Creating…' : finding.issue.state === 'failed' ? 'Retry GitHub issue' : 'Create GitHub issue'}</button>}
+                    </div>
                   </div>
                 </div>
 
                 {expanded && <div className="finding-detail" id={`finding-detail-${finding.id}`}>
-                  <header className="detail-intro"><div><p className="eyebrow">Available evidence</p><h3>{finding.title}</h3><p>{finding.source.identifier} · {formatDate(finding.source.published_at)}</p></div><button className="detail-close" onClick={() => setDetailOpen(false)} aria-label="Close evidence"><Icon name="close" size={17} /></button></header>
+                  <header className="detail-intro"><div><p className="eyebrow">Finding evidence</p><h3>{finding.title}</h3><p>{finding.source.identifier} · {formatDate(finding.source.published_at)} · analysed {finding.analysed_sha.slice(0, 7)}</p></div><button className="detail-close" onClick={() => setDetailOpen(false)} aria-label="Close evidence"><Icon name="close" size={17} /></button></header>
                   <div className="detail-grid">
-                    <section className="detail-section"><div className="section-heading"><h3>Paper summary</h3><span>Reported by arXiv</span></div><p>{finding.summary}</p></section>
-                    <section className="detail-section"><div className="section-heading"><h3>Affected implementation</h3><span>Not provided</span></div><p>The current API schema does not identify affected files or repository excerpts. No code path is inferred by the web application.</p></section>
-                    <section className="detail-section source-evidence wide"><h3>Source evidence</h3><p><strong>{authorLabel(finding.source.authors)}</strong>. The title, authors, publication time and abstract above come from arXiv metadata. Relevance has not read or validated the full paper.</p><a href={finding.source.url} target="_blank" rel="noreferrer">Verify at {finding.source.identifier}<Icon name="external" size={12} /></a></section>
-                    <section className="detail-section experiment wide"><div className="section-heading"><h3>Suggested action</h3><span>Needs verification</span></div><p>{finding.suggested_action}</p></section>
-                    <section className="detail-section wide"><div className="section-heading"><h3>Publication status</h3><span>{finding.issue.state === 'created' ? 'Simulated created' : 'Not created'}</span></div><p>{finding.issue.state === 'created' ? `The API recorded a simulated issue at ${formatDate(finding.issue.created_at)}. Its example.invalid URL is intentionally non-actionable.` : 'No issue simulation has been approved for this finding.'}</p></section>
+                    <section className="detail-section"><div className="section-heading"><h3>Paper summary</h3><span>Source claim</span></div><p>{finding.summary}</p></section>
+                    <section className="detail-section"><div className="section-heading"><h3>Why Relevance flagged it</h3><span>Inference</span></div><p>{finding.why_relevant}</p></section>
+                    {finding.affected_files.length > 0 ? finding.affected_files.map((file) => <section className="detail-section detail-code wide" key={file.path}><div className="section-heading"><h3>Affected file</h3>{selectedRepository && <a href={repositoryFileUrl(selectedRepository, file.path)} target="_blank" rel="noreferrer"><code>{file.path}</code><Icon name="external" size={12} /></a>}</div><pre><span>{file.excerpt}</span></pre></section>) : <section className="detail-section wide"><div className="section-heading"><h3>Affected implementation</h3><span>None identified</span></div><p>This finding does not identify a specific repository file.</p></section>}
+                    <section className="detail-section source-evidence wide"><h3>Source evidence</h3><p><strong>{authorLabel(finding.source.authors)}</strong>. The paper metadata and summary are attributed to the source. Relevance’s repository connection above is an inference and needs verification.</p><a href={finding.source.url} target="_blank" rel="noreferrer">Verify at {finding.source.identifier}<Icon name="external" size={12} /></a></section>
+                    <section className="detail-section experiment wide"><div className="section-heading"><h3>Suggested experiment</h3><span>Needs verification</span></div><p>{finding.suggested_action}</p></section>
+                    <section className="detail-section wide"><div className="section-heading"><h3>Publication status</h3><span>{finding.issue.state === 'created' ? 'Published' : finding.issue.state === 'failed' ? 'Failed' : 'Not published'}</span></div><p>{finding.issue.state === 'created' ? `Published as GitHub issue${finding.issue.number ? ` #${finding.issue.number}` : ''} on ${formatDate(finding.issue.created_at)}.` : finding.issue.state === 'failed' ? finding.issue.error ?? 'GitHub issue creation failed without an error message.' : selectedRepository?.github_connected ? 'This finding has not been published to GitHub.' : 'GitHub is not connected for this repository, so this finding cannot be published yet.'}</p>{finding.issue.url && <a href={finding.issue.url} target="_blank" rel="noreferrer">Open GitHub issue <Icon name="external" size={12} /></a>}</section>
                   </div>
-                  <footer className="detail-actions"><a href={finding.source.url} target="_blank" rel="noreferrer">Open source <Icon name="external" size={14} /></a><button onClick={() => approveIssue(finding)} disabled={finding.issue.state === 'created' || publishingFindingId !== null}><Icon name="github" size={15} />{finding.issue.state === 'created' ? 'Simulated issue created' : publishingFindingId === finding.id ? 'Creating…' : 'Create simulated issue'}</button></footer>
+                  <footer className="detail-actions"><a href={finding.source.url} target="_blank" rel="noreferrer">Open paper <Icon name="external" size={14} /></a>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Open repository <Icon name="external" size={14} /></a>}{finding.issue.state !== 'created' && <button onClick={() => approveIssue(finding)} disabled={issueActionDisabled}><Icon name="github" size={15} />{publishingFindingId === finding.id ? 'Creating…' : finding.issue.state === 'failed' ? 'Retry GitHub issue' : 'Create GitHub issue'}</button>}</footer>
                 </div>}
               </article>
-            }) : <div className="empty-state"><Icon name="search" size={24} /><h2>{findings.length === 0 ? 'No scans yet' : 'No findings match these filters'}</h2><p>{findings.length === 0 ? 'Run a scan to populate this feed from the bot API.' : 'Dismissed findings remain recoverable through the status filter.'}</p><button onClick={findings.length === 0 ? runScan : clearFilters}>{findings.length === 0 ? 'Run scan' : 'Clear filters'}</button></div>}
+            }) : <div className="empty-state"><Icon name="search" size={24} /><h2>{!selectedRepository ? 'No repository selected' : findings.length === 0 ? 'No scans yet' : 'No findings match these filters'}</h2><p>{!selectedRepository ? 'Add and select a repository to view its findings.' : findings.length === 0 ? `Run a scan to find research relevant to ${repositoryName}.` : 'Dismissed findings remain recoverable through the status filter.'}</p><button onClick={!selectedRepository ? () => navigate('repositories') : findings.length === 0 ? runScan : clearFilters}>{!selectedRepository ? 'Add repository' : findings.length === 0 ? 'Run scan' : 'Clear filters'}</button></div>}
           </section>
         </div>
       </main>}
 
       {page === 'repositories' && <main className="content-page repositories-page">
-        <header className="page-header"><div><p className="eyebrow">Repository controls</p><h1>Repositories and monitoring</h1><p>The selected repository is sent to the bot API. Other controls remain browser-only until the API supports them.</p></div><span className="demo-label">Mixed API and local controls</span></header>
+        <header className="page-header"><div><p className="eyebrow">Repository controls</p><h1>Repositories and monitoring</h1><p>Add repositories through the API and choose which one to scan and review.</p></div><span className="demo-label">API repositories</span></header>
         <div className="settings-layout">
           <section className="settings-panel repository-list-panel">
-            <div className="panel-heading"><div><h2>Connected repositories</h2><p>Repositories visible in this local workspace.</p></div><span>{connectedRepositories.length}</span></div>
-            <div className="repository-list">{connectedRepositories.map((item, index) => <article key={item}><span className="repository-icon"><Icon name="github" /></span><div><strong>{item}</strong><p>{index === 0 ? `Selected · ref ${repository.ref}` : 'Browser-only entry; not selected for API scans'}</p></div><span className={`connection-status ${index === 0 ? '' : 'pending'}`}>{index === 0 ? 'Bot API target' : 'Local only'}</span></article>)}</div>
-            <form className="connect-form" onSubmit={connectRepository}><label htmlFor="repository-url">Add another repository</label><div><input id="repository-url" value={repositoryInput} onChange={(event) => setRepositoryInput(event.target.value)} placeholder="owner/repository" /><button type="submit"><Icon name="plus" size={16} />Add repository</button></div><small>Adds a browser-only entry. The current bot API has no repository connection or GitHub authorisation endpoint.</small></form>
+            <div className="panel-heading"><div><h2>Connected repositories</h2><p>Repositories available to this Relevance workspace.</p></div><span>{repositories.length}</span></div>
+            <div className="repository-list">{repositoriesLoading ? <div className="empty-state"><span className="spinner" aria-hidden="true" /><h2>Loading repositories</h2></div> : repositories.length > 0 ? repositories.map((item) => {
+              const selected = selectedRepository !== null && repositoryKey(item) === repositoryKey(selectedRepository)
+              return <article key={repositoryKey(item)}><span className="repository-icon"><Icon name="github" /></span><div><strong>{item.owner}/{item.repo}</strong><p>Ref {item.ref} · {item.github_connected ? 'GitHub connected' : 'GitHub not connected'}{item.analysed_sha ? ` · analysed ${item.analysed_sha.slice(0, 7)}` : ''}</p></div><button type="button" className={`connection-status ${selected ? '' : 'pending'}`} onClick={() => selectRepository(item)} disabled={selected}>{selected ? 'Selected' : 'Select'}</button></article>
+            }) : <div className="empty-state"><h2>No repositories connected</h2><p>Add a repository below to begin.</p></div>}</div>
+            <form className="connect-form" onSubmit={connectRepository}><label htmlFor="repository-url">Add another repository</label><div><input id="repository-url" value={repositoryInput} onChange={(event) => setRepositoryInput(event.target.value)} placeholder="owner/repository" disabled={addingRepository} /><input value={repositoryRefInput} onChange={(event) => setRepositoryRefInput(event.target.value)} placeholder="branch or ref" aria-label="Branch or ref" disabled={addingRepository} /><button type="submit" disabled={addingRepository}><Icon name="plus" size={16} />{addingRepository ? 'Adding…' : 'Add repository'}</button></div><small>The repository is persisted by the API and selected after it is added. Set GITHUB_TOKEN on the server to enable private repository access and GitHub issue creation.</small></form>
           </section>
 
           <section className="settings-panel monitoring-panel">
@@ -453,7 +591,7 @@ function Application() {
               <label><span>Preferred interval</span><select value={scanInterval} onChange={(event) => setScanInterval(event.target.value)} disabled={!monitoringEnabled}><option>6 hours</option><option>12 hours</option><option>24 hours</option><option>7 days</option></select><small>No background worker consumes this preference.</small></label>
               <fieldset><legend>Research categories</legend>{Object.entries(topics).map(([topic, enabled]) => <label className="checkbox-row" key={topic}><input type="checkbox" checked={enabled} onChange={(event) => setTopics((current) => ({ ...current, [topic]: event.target.checked }))} /><span><strong>{topic}</strong><small>{topic === 'cs.AI' ? 'Artificial Intelligence' : topic === 'cs.CL' ? 'Computation and Language' : 'Machine Learning'}</small></span></label>)}</fieldset>
               <label><span>Notification threshold</span><select value={threshold} onChange={(event) => setThreshold(event.target.value)}><option>Strong matches only</option><option>Strong and worth reviewing</option><option>All evaluated findings</option></select><small>Browser-only preference; it does not filter bot API generation.</small></label>
-              <label className="checkbox-row publishing-control"><input type="checkbox" checked={publishingEnabled} onChange={(event) => setPublishingEnabled(event.target.checked)} /><span><strong>Allow simulated issue actions</strong><small>{publishingEnabled ? 'The action still requires confirmation for every finding.' : 'Issue action buttons remain available but always require explicit confirmation.'}</small></span></label>
+              <label className="checkbox-row publishing-control"><input type="checkbox" checked={confirmIssueCreation} onChange={(event) => setConfirmIssueCreation(event.target.checked)} /><span><strong>Confirm GitHub issue creation</strong><small>{confirmIssueCreation ? 'Ask before publishing each finding to GitHub.' : 'Publish immediately when Create GitHub issue is selected.'}</small></span></label>
             </div>
             <footer><button onClick={() => notify('Local preferences saved for this browser session.')}><Icon name="check" size={16} />Save local preferences</button></footer>
           </section>
@@ -466,7 +604,7 @@ function Application() {
 }
 
 function ScanStatus({ scan }: { scan: Scan }) {
-  const steps = ['Queued', 'Fetching arXiv', 'Complete']
+  const steps = ['Queued', 'Evaluating repository & papers', 'Complete']
   const currentIndex = scan.status === 'queued' ? 0 : scan.status === 'running' ? 1 : 2
   return <div className="scan-status" role="status" aria-live="polite"><div className="scan-status-copy"><span className="spinner" aria-hidden="true" /><strong>{scan.progress.stage}</strong><span>{scan.progress.completed_steps} of {scan.progress.total_steps} API steps complete</span></div><ol aria-label="Scan progress">{steps.map((item, index) => <li key={item} className={index === currentIndex ? 'current' : ''}>{item}</li>)}</ol></div>
 }

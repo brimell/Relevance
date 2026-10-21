@@ -239,8 +239,8 @@ button { color: inherit; }
 .affected-file:hover { color: var(--link); }
 .affected-file code { overflow-wrap: anywhere; font: 600 11px 'JetBrains Mono', ui-monospace, monospace; }
 .finding-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
-.finding-actions button, .detail-actions button, .detail-actions a { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; color: var(--link); background: transparent; font-size: 11px; font-weight: 700; text-decoration: none; cursor: pointer; }
-.finding-actions button:hover:not(:disabled), .detail-actions button:hover:not(:disabled), .detail-actions a:hover { border-bottom-color: currentColor; color: var(--accent-hover); background: transparent; }
+.finding-actions button, .finding-actions a, .detail-actions button, .detail-actions a { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; color: var(--link); background: transparent; font-size: 11px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.finding-actions button:hover:not(:disabled), .finding-actions a:hover, .detail-actions button:hover:not(:disabled), .detail-actions a:hover { border-bottom-color: currentColor; color: var(--accent-hover); background: transparent; }
 .finding-actions button:disabled, .detail-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
 .finding-actions .primary-action { padding-inline: 11px; border: 1px solid var(--accent); color: var(--accent-text); background: var(--accent); }
 .finding-actions .primary-action:hover { color: var(--accent-text); background: var(--accent-hover); }
@@ -299,14 +299,16 @@ button { color: inherit; }
 .repository-list article > div { min-width: 0; flex: 1; }
 .repository-list strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
 .repository-list p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; }
-.connection-status { padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--success) 38%, var(--border)); border-radius: 4px; color: var(--success); font-size: 10px; white-space: nowrap; }
+.connection-status { padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--success) 38%, var(--border)); border-radius: 4px; color: var(--success); background: transparent; font-size: 10px; white-space: nowrap; cursor: pointer; }
 .connection-status.pending { border-color: var(--border); color: var(--text-muted); }
+.connection-status:disabled { cursor: default; }
 .connect-form { display: grid; gap: 7px; padding: 20px 0; border-top: 1px solid var(--border); }
 .connect-form > label { font-size: 12px; font-weight: 650; }
 .connect-form > div { display: flex; gap: 7px; }
 .connect-form input { width: 100%; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: 0; outline: 0; color: var(--text); background: var(--surface); }
 .connect-form input:focus { border-color: var(--focus); }
 .connect-form button, .monitoring-panel footer button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--accent); border-radius: 0; color: var(--accent-text); background: var(--accent); font-weight: 700; white-space: nowrap; cursor: pointer; }
+.connect-form button:disabled { opacity: 0.55; cursor: not-allowed; }
 .connect-form small, .settings-fields small { color: var(--text-muted); font-size: 10px; }
 
 .switch { display: grid; grid-template-columns: 34px auto; grid-template-rows: auto auto; align-items: center; gap: 0 8px; cursor: pointer; }

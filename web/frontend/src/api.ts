@@ -4,6 +4,30 @@ export type Repository = {
   ref: string | null
 }
 
+export type RepositoryConnection = Repository & {
+  analysed_sha: string | null
+  github_connected: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type RepositoriesResponse = {
+  repositories: RepositoryConnection[]
+  count: number
+}
+
+export type ProjectProfile = {
+  repository: Repository
+  analysed_sha: string
+  summary: string
+  objectives: string[]
+  methods: string[]
+  research_topics: string[]
+  key_files: string[]
+  assumptions: string[]
+  generated_at: string
+}
+
 export type ScanStatus = 'queued' | 'running' | 'completed' | 'failed'
 
 export type Scan = {
@@ -20,8 +44,15 @@ export type Scan = {
   updated_at: string
   completed_at: string | null
   error: string | null
-  simulated: true
-  simulation_notice: string
+  analysed_sha: string | null
+}
+
+export type FindingIssue = {
+  state: 'not_created' | 'created' | 'failed'
+  number: number | null
+  url: string | null
+  created_at: string | null
+  error: string | null
 }
 
 export type Finding = {
@@ -38,13 +69,18 @@ export type Finding = {
   relevance: 'high' | 'medium' | 'low'
   title: string
   summary: string
+  finding_type: 'potential_improvement' | 'challenges_assumption' | 'new_technique'
+  why_relevant: string
+  affected_files: Array<{
+    path: string
+    excerpt: string
+  }>
+  evidence_label: 'strong_match' | 'worth_reviewing' | 'exploratory'
+  analysed_sha: string
+  user_status: 'new' | 'saved' | 'dismissed'
   suggested_action: string
   detected_at: string
-  issue: {
-    state: 'not_created' | 'created'
-    url: string | null
-    created_at: string | null
-  }
+  issue: FindingIssue
 }
 
 export type FindingsResponse = {
@@ -52,17 +88,11 @@ export type FindingsResponse = {
   scan_id: string | null
   findings: Finding[]
   count: number
-  simulated: true
-  simulation_notice: string
 }
 
 export type IssueCreationResponse = {
   finding_id: string
-  state: 'created'
-  url: string
-  created_at: string
-  simulated: true
-  simulation_notice: string
+  issue: FindingIssue
 }
 
 type ErrorResponse = {
@@ -124,6 +154,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export function getRepositories(): Promise<RepositoriesResponse> {
+  return request('/api/v1/repositories')
+}
+
+export function addRepository(repository: Repository): Promise<RepositoryConnection> {
+  return request('/api/v1/repositories', {
+    method: 'POST',
+    body: JSON.stringify({ repository }),
+  })
+}
+
+export function getProjectProfile(owner: string, repo: string): Promise<ProjectProfile> {
+  return request(`/api/v1/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/profile`)
+}
+
 export function getRepositoryFindings(owner: string, repo: string): Promise<FindingsResponse> {
   return request(`/api/v1/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/findings`)
 }
@@ -147,5 +192,12 @@ export function createIssue(findingId: string): Promise<IssueCreationResponse> {
   return request(`/api/v1/findings/${encodeURIComponent(findingId)}/issues`, {
     method: 'POST',
     body: JSON.stringify({ approved: true }),
+  })
+}
+
+export function updateFindingStatus(findingId: string, status: Finding['user_status']): Promise<Finding> {
+  return request(`/api/v1/findings/${encodeURIComponent(findingId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   })
 }
